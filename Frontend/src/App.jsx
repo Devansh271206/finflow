@@ -21,6 +21,7 @@ import Reports from './pages/Reports';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import Departments from './pages/Departments';
+import TeamManagement from './pages/TeamManagement';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
@@ -90,6 +91,11 @@ const AnimatedRoutes = () => {
         <Route path="/departments" element={
           <ProtectedRoute>
             <PageTransition><Departments /></PageTransition>
+          </ProtectedRoute>
+        } />
+        <Route path="/team" element={
+          <ProtectedRoute>
+            <PageTransition><TeamManagement /></PageTransition>
           </ProtectedRoute>
         } />
         <Route path="/insights" element={

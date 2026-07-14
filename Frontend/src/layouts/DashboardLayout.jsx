@@ -22,7 +22,8 @@ import {
   Bell,
   Plus,
   TrendingUp,
-  Building2
+  Building2,
+  Users
 } from 'lucide-react';
 import { usePermissionContext } from '../context/PermissionContext';
 import WorkspaceSwitcher from '../components/WorkspaceSwitcher';
@@ -66,6 +67,9 @@ export const DashboardLayout = ({ children }) => {
     { name: 'Goals', path: '/goals', icon: Target },
     ...(can && can('departments.read')
       ? [{ name: 'Departments', path: '/departments', icon: Building2 }]
+      : []),
+    ...(can && can('team.manage')
+      ? [{ name: 'Team', path: '/team', icon: Users }]
       : []),
     { name: 'AI Insights', path: '/insights', icon: Sparkles },
     { name: 'AI Assistant', path: '/assistant', icon: MessageSquare },

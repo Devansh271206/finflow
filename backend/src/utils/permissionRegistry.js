@@ -14,6 +14,7 @@ const PERMISSIONS = Object.freeze({
   WORKSPACE_TRANSFER: "workspace.transfer",
   COMPANY_MANAGE: "company.manage",
   TEAM_INVITE: "team.invite",
+  TEAM_MANAGE: "team.manage",
   DEPARTMENTS_MANAGE: "departments.manage",
   DEPARTMENTS_READ: "departments.read",
   CATEGORIES_MANAGE: "categories.manage",

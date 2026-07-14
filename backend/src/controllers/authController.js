@@ -35,9 +35,12 @@ const register = asyncHandler(async (req, res) => {
   }
 
   // Create a matching profile row so the rest of the API can rely on it existing.
+  // email is stored here so membership lookups (findProfileByEmail fallback via
+  // profiles table) and the member list UI display have it without an extra auth call.
   if (data?.user) {
     await supabaseAdmin.from("profiles").upsert({
       id: data.user.id,
+      email: data.user.email,
       full_name: fullName || email.split("@")[0],
       currency: "₹",
       theme: "dark",
