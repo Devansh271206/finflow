@@ -25,7 +25,7 @@ export const PermissionProvider = ({ children }) => {
 
     async function fetchPermissions() {
       setLoading(true);
-      const { data, error } = await apiGet("/api/roles/me");
+      const { data, error } = await apiGet("/roles/me");
       if (!cancelled) {
         if (!error && data) {
           setRole(data.role || null);

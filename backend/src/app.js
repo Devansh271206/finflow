@@ -28,6 +28,7 @@ const notificationRoutes = require("./routes/notificationRoutes");
 const companyRoutes = require("./routes/companyRoutes");
 const workspaceRoutes = require("./routes/workspaceRoutes");
 const roleRoutes = require("./routes/roleRoutes");
+const departmentRoutes = require("./routes/departmentRoutes");
 
 const app = express();
 
@@ -84,6 +85,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/workspaces", workspaceRoutes);
 app.use("/api/roles", roleRoutes);
+app.use("/api/departments", departmentRoutes);
 
 // ------------------------------------------------------------------
 // 404 + centralized error handling (must be registered last)

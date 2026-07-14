@@ -21,8 +21,11 @@ import {
   Search,
   Bell,
   Plus,
-  TrendingUp
+  TrendingUp,
+  Building2
 } from 'lucide-react';
+import { usePermissionContext } from '../context/PermissionContext';
+import WorkspaceSwitcher from '../components/WorkspaceSwitcher';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
@@ -32,6 +35,7 @@ import { addTransaction as addTransactionSvc } from '../services/transactionServ
 
 export const DashboardLayout = ({ children }) => {
   const { user, settings, logout } = useApp();
+  const { can } = usePermissionContext() || {};
   const navigate = useNavigate();
   const location = useLocation();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -60,6 +64,9 @@ export const DashboardLayout = ({ children }) => {
     { name: 'Budgets', path: '/budgets', icon: PieChart },
     { name: 'Analytics', path: '/analytics', icon: BarChart3 },
     { name: 'Goals', path: '/goals', icon: Target },
+    ...(can && can('departments.read')
+      ? [{ name: 'Departments', path: '/departments', icon: Building2 }]
+      : []),
     { name: 'AI Insights', path: '/insights', icon: Sparkles },
     { name: 'AI Assistant', path: '/assistant', icon: MessageSquare },
     { name: 'Reports', path: '/reports', icon: FileText },
@@ -328,6 +335,9 @@ export const DashboardLayout = ({ children }) => {
 
           {/* Right: Quick actions, notifications, profile */}
           <div className="flex items-center gap-3">
+            {/* Workspace Switcher */}
+            <WorkspaceSwitcher />
+
             {/* Quick Add Button */}
             <Button
               variant="primary"

@@ -1,26 +1,45 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Check, Building2 } from "lucide-react";
+import { ChevronDown, Check, Building2, Plus } from "lucide-react";
+import toast from "react-hot-toast";
 import { useWorkspace } from "../hooks/useWorkspace";
+import { listCompanies } from "../services/companyService";
+import { createWorkspace } from "../services/workspaceService";
+import Modal from "./ui/Modal";
+import Input from "./ui/Input";
+import Button from "./ui/Button";
 
 /**
- * WorkspaceSwitcher — Phase 1 addition.
+ * WorkspaceSwitcher — Phase 1 addition, extended in Phase 2.1 with a
+ * "Create Workspace" flow (previously there was no UI path to create a
+ * second workspace at all).
  *
- * Self-contained dropdown; not wired into DashboardLayout automatically
- * (per "no existing UI changes" instruction). Drop it into the sidebar or
- * header wherever desired, e.g.:
- *
+ * Mount wherever desired, e.g. in DashboardLayout's header:
  *   import WorkspaceSwitcher from '../components/WorkspaceSwitcher';
  *   <WorkspaceSwitcher />
  *
- * Renders nothing if the user has zero or exactly one workspace, so it's
- * safe to mount even before multi-workspace usage is common.
+ * Unlike the original Phase 1 version, this now renders even when the
+ * user has 0 or 1 workspace, since "create a new one" needs to be
+ * reachable regardless of how many workspaces already exist.
  */
 const WorkspaceSwitcher = () => {
-  const { workspaces, activeWorkspaceId, activeWorkspace, selectWorkspace, loading } =
-    useWorkspace();
+  const {
+    workspaces,
+    activeWorkspaceId,
+    activeWorkspace,
+    selectWorkspace,
+    refreshWorkspaces,
+    loading,
+  } = useWorkspace();
+
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [companies, setCompanies] = useState([]);
+  const [companyId, setCompanyId] = useState("");
+  const [newWorkspaceName, setNewWorkspaceName] = useState("");
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -32,7 +51,50 @@ const WorkspaceSwitcher = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  if (loading || workspaces.length <= 1) {
+  const openCreateModal = async () => {
+    setOpen(false);
+    setNewWorkspaceName("");
+    setIsCreateOpen(true);
+
+    // A workspace belongs to a company (PRD §5.1). Most users only ever
+    // own one company (created at signup), so default to it; if they own
+    // multiple, let them pick.
+    const { data, error } = await listCompanies();
+    if (!error && Array.isArray(data)) {
+      setCompanies(data);
+      if (data.length > 0) {
+        setCompanyId((prev) => prev || data[0].id);
+      }
+    }
+  };
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    if (!newWorkspaceName.trim() || !companyId) return;
+
+    setCreating(true);
+    const { data, error } = await createWorkspace({
+      companyId,
+      name: newWorkspaceName.trim(),
+    });
+    setCreating(false);
+
+    if (error) {
+      toast.error(error.message || "Failed to create workspace.");
+      return;
+    }
+
+    toast.success("Workspace created!");
+    setIsCreateOpen(false);
+    setNewWorkspaceName("");
+
+    await refreshWorkspaces();
+    if (data?.id) {
+      selectWorkspace(data.id);
+    }
+  };
+
+  if (loading) {
     return null;
   }
 
@@ -59,6 +121,12 @@ const WorkspaceSwitcher = () => {
             transition={{ duration: 0.15 }}
             className="absolute right-0 mt-2 w-64 rounded-xl bg-[#111827] border border-white/10 shadow-xl z-50 overflow-hidden"
           >
+            {workspaces.length === 0 && (
+              <div className="px-4 py-3 text-xs text-slate-500">
+                No workspaces yet.
+              </div>
+            )}
+
             {workspaces.map((m) => (
               <button
                 key={m.workspace?.id}
@@ -80,9 +148,73 @@ const WorkspaceSwitcher = () => {
                 )}
               </button>
             ))}
+
+            <div className="h-[1px] bg-white/5" />
+
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm font-medium text-[#10b981] hover:bg-[#10b981]/10 transition-colors"
+            >
+              <Plus size={16} />
+              Create Workspace
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
+
+      <Modal
+        isOpen={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+        title="Create Workspace"
+      >
+        <form onSubmit={handleCreate} className="space-y-4">
+          {companies.length > 1 && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                Company
+              </label>
+              <select
+                value={companyId}
+                onChange={(e) => setCompanyId(e.target.value)}
+                className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-sm py-3 px-4 outline-none focus:border-[#10b981]/50 focus:ring-1 focus:ring-[#10b981]/30 transition-all duration-200"
+              >
+                {companies.map((c) => (
+                  <option key={c.id} value={c.id} className="bg-[#111827]">
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {companies.length === 0 && (
+            <p className="text-xs text-slate-500">
+              You don't own a company yet — a company is required before creating a
+              workspace. Create a company first (Settings) to continue.
+            </p>
+          )}
+
+          <Input
+            label="Workspace Name"
+            placeholder="e.g. Sandbox, Production"
+            value={newWorkspaceName}
+            onChange={(e) => setNewWorkspaceName(e.target.value)}
+            autoFocus
+            required
+            disabled={companies.length === 0}
+          />
+
+          <Button
+            type="submit"
+            className="w-full justify-center"
+            loading={creating}
+            disabled={creating || companies.length === 0}
+          >
+            Create Workspace
+          </Button>
+        </form>
+      </Modal>
     </div>
   );
 };

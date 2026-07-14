@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { AppProvider, useApp } from './context/AppContext';
 import { WorkspaceProvider } from './context/WorkspaceContext';
 import { PermissionProvider } from './context/PermissionContext';
+import { DepartmentProvider } from './context/DepartmentContext';
 import DashboardLayout from './layouts/DashboardLayout';
 
 // Pages
@@ -19,6 +20,7 @@ import AIAssistant from './pages/AIAssistant';
 import Reports from './pages/Reports';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
+import Departments from './pages/Departments';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
@@ -85,6 +87,11 @@ const AnimatedRoutes = () => {
             <PageTransition><Goals /></PageTransition>
           </ProtectedRoute>
         } />
+        <Route path="/departments" element={
+          <ProtectedRoute>
+            <PageTransition><Departments /></PageTransition>
+          </ProtectedRoute>
+        } />
         <Route path="/insights" element={
           <ProtectedRoute>
             <PageTransition><AIInsights /></PageTransition>
@@ -124,9 +131,11 @@ function App() {
     <AppProvider>
       <WorkspaceProvider>
         <PermissionProvider>
-          <BrowserRouter>
-            <AnimatedRoutes />
-          </BrowserRouter>
+          <DepartmentProvider>
+            <BrowserRouter>
+              <AnimatedRoutes />
+            </BrowserRouter>
+          </DepartmentProvider>
         </PermissionProvider>
       </WorkspaceProvider>
     </AppProvider>

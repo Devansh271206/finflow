@@ -5,17 +5,17 @@ import { apiGet, apiPost, apiPatch } from "../lib/apiClient";
  * belongs to. Backs the workspace switcher.
  */
 export async function listWorkspaces() {
-  return apiGet("/api/workspaces");
+  return apiGet("/workspaces");
 }
 
 export async function createWorkspace({ companyId, name }) {
-  return apiPost("/api/workspaces", { company_id: companyId, name });
+  return apiPost("/workspaces", { company_id: companyId, name });
 }
 
 export async function getWorkspace(id) {
-  return apiGet(`/api/workspaces/${id}`);
+  return apiGet(`/workspaces/${id}`);
 }
 
 export async function updateWorkspace(id, payload) {
-  return apiPatch(`/api/workspaces/${id}`, payload);
+  return apiPatch(`/workspaces/${id}`, payload);
 }
