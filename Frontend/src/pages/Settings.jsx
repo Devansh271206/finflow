@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
+import { Select, SelectItem } from '../components/ui/Select';
 import toast from 'react-hot-toast';
 import { getProfileSettings, updateProfileSettings } from '../services/settingsService';
 import { getTransactions, deleteTransaction } from '../services/transactionService';
@@ -196,16 +197,15 @@ export const Settings = () => {
                 <h4 className="text-xs font-bold text-white">Default Currency Symbol</h4>
                 <p className="text-[10px] text-slate-500 mt-0.5">Used across transaction cards and totals</p>
               </div>
-              <select
+              <Select
                 value={settings.currency}
                 onChange={handleCurrencyChange}
-                className="rounded-xl bg-white/5 border border-white/10 text-white text-xs py-2 px-3 outline-none focus:border-[#10b981]/50"
               >
-                <option value="₹" className="bg-[#111827]">₹ (Rupees)</option>
-                <option value="$" className="bg-[#111827]">$ (USD)</option>
-                <option value="€" className="bg-[#111827]">€ (Euro)</option>
-                <option value="£" className="bg-[#111827]">£ (Pound)</option>
-              </select>
+                <SelectItem value="₹">₹ (Rupees)</SelectItem>
+                <SelectItem value="$">$ (USD)</SelectItem>
+                <SelectItem value="€">€ (Euro)</SelectItem>
+                <SelectItem value="£">£ (Pound)</SelectItem>
+              </Select>
             </div>
 
             {/* Language */}
@@ -214,16 +214,15 @@ export const Settings = () => {
                 <h4 className="text-xs font-bold text-white">System Language</h4>
                 <p className="text-[10px] text-slate-500 mt-0.5">Applies locale translations</p>
               </div>
-              <select
+              <Select
                 value={settings.language}
                 onChange={handleLanguageChange}
-                className="rounded-xl bg-white/5 border border-white/10 text-white text-xs py-2 px-3 outline-none focus:border-[#10b981]/50"
               >
-                <option value="English" className="bg-[#111827]">English</option>
-                <option value="Hindi" className="bg-[#111827]">Hindi</option>
-                <option value="Spanish" className="bg-[#111827]">Spanish</option>
-                <option value="French" className="bg-[#111827]">French</option>
-              </select>
+                <SelectItem value="English">English</SelectItem>
+                <SelectItem value="Hindi">Hindi</SelectItem>
+                <SelectItem value="Spanish">Spanish</SelectItem>
+                <SelectItem value="French">French</SelectItem>
+              </Select>
             </div>
 
             {/* Locked Dark Theme */}

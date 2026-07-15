@@ -15,6 +15,7 @@ import ProgressBar from '../components/ui/ProgressBar';
 import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
+import { Select, SelectItem } from '../components/ui/Select';
 import toast from 'react-hot-toast';
 import { getGoals, addGoal, addGoalFunds, deleteGoal, updateGoal } from '../services/goalService';
 
@@ -52,15 +53,14 @@ const GoalFormFields = ({
       />
       <div>
         <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Category</label>
-        <select
+        <Select
           value={formCategory}
           onChange={e => setFormCategory(e.target.value)}
-          className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-sm py-3 px-4 outline-none focus:border-[#10b981]/50"
         >
           {GOAL_CATEGORIES.map(cat => (
-            <option key={cat} value={cat} className="bg-[#111827]">{cat}</option>
+            <SelectItem key={cat} value={cat}>{cat}</SelectItem>
           ))}
-        </select>
+        </Select>
       </div>
     </div>
 <div>

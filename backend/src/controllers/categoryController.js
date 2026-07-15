@@ -1,131 +1,144 @@
 /**
  * Category Controller
  * ------------------------------------------------------------------
- * Table: categories
- * Columns: id, user_id, name, icon, color, type ('income'|'expense'), created_at
+ * Table: categories (see categoryRepository.js for full column list)
+ *
+ * Route protection (see categoryRoutes.js):
+ *   authenticate -> resolveWorkspace -> authorize(PERMISSIONS.CATEGORIES_*)
+ *
+ * Phase 2.2.1: refactored from direct-Supabase-in-controller to the
+ * standard Routes -> Controllers -> Services -> Repositories layering
+ * used everywhere else in this project. All 5 original endpoints
+ * (GET /, GET /:id, POST /, PUT /:id, DELETE /:id) keep their existing
+ * routes/response shape — Budgets.jsx's existing getCategories() call
+ * is unaffected. New: GET / accepts search/department/status filters,
+ * POST /:id/status (activate/deactivate), PATCH /reorder.
  */
 
-const { supabaseAdmin } = require("../config/supabase");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess } = require("../utils/apiResponse");
 const ApiError = require("../utils/ApiError");
-const { applyWorkspaceScope, workspaceIdForInsert } = require("../utils/workspaceScope");
+const categoryService = require("../services/categoryService");
 
-// @desc    Get all categories for the authenticated user
-// @route   GET /api/categories
-// @access  Private
+// @desc    Get all categories for the resolved workspace, with optional
+//          search/department/status filters
+// @route   GET /api/categories?search=&department=&status=
+// @access  Member (categories.read)
 const getCategories = asyncHandler(async (req, res) => {
-  const userId = req.user.id;
+  if (!req.workspace) {
+    throw new ApiError(400, "No active workspace resolved for this request");
+  }
 
-  let query = supabaseAdmin
-    .from("categories")
-    .select("*")
-    .eq("user_id", userId)
-    .order("name", { ascending: true });
+  const { search, department, status } = req.query;
+  const categories = await categoryService.listCategories(req.workspace.id, {
+    search,
+    department,
+    status,
+  });
 
-  query = applyWorkspaceScope(query, req);
-
-  const { data, error } = await query;
-
-  if (error) throw new ApiError(500, "Failed to fetch categories", error.message);
-
-  return sendSuccess(res, { message: "Categories fetched successfully", data: data || [] });
+  return sendSuccess(res, { message: "Categories fetched successfully", data: categories });
 });
 
 // @desc    Get a single category
 // @route   GET /api/categories/:id
-// @access  Private
+// @access  Member (categories.read)
 const getCategoryById = asyncHandler(async (req, res) => {
-  const userId = req.user.id;
-  const { id } = req.params;
+  if (!req.workspace) {
+    throw new ApiError(400, "No active workspace resolved for this request");
+  }
 
-  const { data, error } = await supabaseAdmin
-    .from("categories")
-    .select("*")
-    .eq("id", id)
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (error) throw new ApiError(500, "Failed to fetch category", error.message);
-  if (!data) throw new ApiError(404, "Category not found");
-
-  return sendSuccess(res, { message: "Category fetched successfully", data });
+  const category = await categoryService.getCategory(req.params.id, req.workspace.id);
+  return sendSuccess(res, { message: "Category fetched successfully", data: category });
 });
 
-// @desc    Create a new category
+// @desc    Create a new custom category in the resolved workspace
 // @route   POST /api/categories
-// @access  Private
+// @access  Admin / Finance-Ops (categories.manage)
 const createCategory = asyncHandler(async (req, res) => {
-  const userId = req.user.id;
-  const { name, icon, color, type } = req.body;
+  if (!req.workspace) {
+    throw new ApiError(400, "No active workspace resolved for this request");
+  }
 
-  const payload = {
-    user_id: userId,
+  const { name, description, icon, color, type, department_id, expense_type } = req.body;
+
+  const category = await categoryService.createCategory(req.workspace.id, req.user.id, {
     name,
-    icon: icon || "CreditCard",
-    color: color || "emerald",
-    type: type || "expense",
-    workspace_id: workspaceIdForInsert(req),
-  };
+    description,
+    icon,
+    color,
+    type,
+    departmentId: department_id,
+    expenseType: expense_type,
+  });
 
-  const { data, error } = await supabaseAdmin
-    .from("categories")
-    .insert([payload])
-    .select("*")
-    .single();
-
-  if (error) throw new ApiError(500, "Failed to create category", error.message);
-
-  return sendSuccess(res, { statusCode: 201, message: "Category created successfully", data });
+  return sendSuccess(res, { statusCode: 201, message: "Category created successfully", data: category });
 });
 
-// @desc    Update a category
+// @desc    Update a category (name, description, department, expense
+//          type, icon, color). See categoryService for the system-vs-
+//          custom editability policy.
 // @route   PUT /api/categories/:id
-// @access  Private
+// @access  Admin / Finance-Ops (categories.manage)
 const updateCategory = asyncHandler(async (req, res) => {
-  const userId = req.user.id;
-  const { id } = req.params;
-  const { name, icon, color, type } = req.body;
+  if (!req.workspace) {
+    throw new ApiError(400, "No active workspace resolved for this request");
+  }
 
-  const payload = {
-    ...(name !== undefined && { name }),
-    ...(icon !== undefined && { icon }),
-    ...(color !== undefined && { color }),
-    ...(type !== undefined && { type }),
-  };
+  const { name, description, icon, color, department_id, expense_type } = req.body;
 
-  const { data, error } = await supabaseAdmin
-    .from("categories")
-    .update(payload)
-    .eq("id", id)
-    .eq("user_id", userId)
-    .select("*")
-    .maybeSingle();
+  const category = await categoryService.updateCategory(req.params.id, req.workspace.id, {
+    name,
+    description,
+    icon,
+    color,
+    departmentId: department_id,
+    expenseType: expense_type,
+  });
 
-  if (error) throw new ApiError(500, "Failed to update category", error.message);
-  if (!data) throw new ApiError(404, "Category not found");
-
-  return sendSuccess(res, { message: "Category updated successfully", data });
+  return sendSuccess(res, { message: "Category updated successfully", data: category });
 });
 
-// @desc    Delete a category
+// @desc    Activate or deactivate a category (system or custom)
+// @route   PATCH /api/categories/:id/status
+// @access  Admin / Finance-Ops (categories.manage)
+const updateCategoryStatus = asyncHandler(async (req, res) => {
+  if (!req.workspace) {
+    throw new ApiError(400, "No active workspace resolved for this request");
+  }
+
+  const { status } = req.body;
+  if (!["active", "inactive"].includes(status)) {
+    throw new ApiError(400, "status must be 'active' or 'inactive'");
+  }
+
+  const category = await categoryService.updateCategoryStatus(req.params.id, req.workspace.id, status);
+  return sendSuccess(res, { message: "Category status updated successfully", data: category });
+});
+
+// @desc    Reorder categories within the resolved workspace
+// @route   PATCH /api/categories/reorder
+// @access  Admin / Finance-Ops (categories.manage)
+const reorderCategories = asyncHandler(async (req, res) => {
+  if (!req.workspace) {
+    throw new ApiError(400, "No active workspace resolved for this request");
+  }
+
+  const { ordered_ids } = req.body;
+  const categories = await categoryService.reorderCategories(req.workspace.id, ordered_ids);
+  return sendSuccess(res, { message: "Categories reordered successfully", data: categories });
+});
+
+// @desc    Delete a category. System categories are rejected with a 400
+//          (see categoryService.deleteCategory) — deactivate instead.
 // @route   DELETE /api/categories/:id
-// @access  Private
+// @access  Admin / Finance-Ops (categories.manage)
 const deleteCategory = asyncHandler(async (req, res) => {
-  const userId = req.user.id;
+  if (!req.workspace) {
+    throw new ApiError(400, "No active workspace resolved for this request");
+  }
+
   const { id } = req.params;
-
-  const { data, error } = await supabaseAdmin
-    .from("categories")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", userId)
-    .select("id")
-    .maybeSingle();
-
-  if (error) throw new ApiError(500, "Failed to delete category", error.message);
-  if (!data) throw new ApiError(404, "Category not found");
-
+  await categoryService.deleteCategory(id, req.workspace.id);
   return sendSuccess(res, { message: "Category deleted successfully", data: { id } });
 });
 
@@ -134,5 +147,7 @@ module.exports = {
   getCategoryById,
   createCategory,
   updateCategory,
+  updateCategoryStatus,
+  reorderCategories,
   deleteCategory,
 };

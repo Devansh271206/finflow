@@ -15,12 +15,11 @@ import Transactions from './pages/Transactions';
 import Budgets from './pages/Budgets';
 import Analytics from './pages/Analytics';
 import Goals from './pages/Goals';
-import AIInsights from './pages/AIInsights';
-import AIAssistant from './pages/AIAssistant';
 import Reports from './pages/Reports';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import Departments from './pages/Departments';
+import TeamManagement from './pages/TeamManagement';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
@@ -92,14 +91,9 @@ const AnimatedRoutes = () => {
             <PageTransition><Departments /></PageTransition>
           </ProtectedRoute>
         } />
-        <Route path="/insights" element={
+        <Route path="/team" element={
           <ProtectedRoute>
-            <PageTransition><AIInsights /></PageTransition>
-          </ProtectedRoute>
-        } />
-        <Route path="/assistant" element={
-          <ProtectedRoute>
-            <PageTransition><AIAssistant /></PageTransition>
+            <PageTransition><TeamManagement /></PageTransition>
           </ProtectedRoute>
         } />
         <Route path="/reports" element={

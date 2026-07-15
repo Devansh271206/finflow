@@ -2,9 +2,26 @@
  * Transaction Controller
  * ------------------------------------------------------------------
  * Table: transactions
- * Columns: id, user_id, title, merchant, amount, type ('income'|'expense'),
- *          category, category_id, payment_method, transaction_date,
- *          notes, receipt_url, created_at, updated_at
+ * Columns: id, user_id, workspace_id, department_id, vendor_id,
+ *          employee_id, budget_id, title, merchant, amount,
+ *          type ('income'|'expense'), transaction_type, category,
+ *          category_id, payment_method, transaction_date,
+ *          reference_number, invoice_number, approval_status,
+ *          payment_status, transaction_source, created_by,
+ *          approved_by, attachment_count, notes, receipt_url,
+ *          created_at, updated_at
+ *
+ * Refactored (Phase F.1) to go through transactionRepository instead of
+ * calling supabaseAdmin directly — no behavior change, brings this
+ * controller onto the same repository pattern as departments/workspaces/
+ * memberships (PRD §10.1).
+ *
+ * Enterprise refactor: now also delegates to transactionService for
+ * validation of vendor_id/employee_id/budget_id and the new enum
+ * fields (transaction_type/approval_status/payment_status), the same
+ * way budgetController delegates to budgetService. See the
+ * Transactions architecture audit — this controller previously had no
+ * service layer at all.
  */
 
 const { supabaseAdmin } = require("../config/supabase");
@@ -12,69 +29,58 @@ const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess } = require("../utils/apiResponse");
 const ApiError = require("../utils/ApiError");
 const { uploadToSupabaseStorage } = require("../utils/upload");
-const { applyWorkspaceScope, workspaceIdForInsert } = require("../utils/workspaceScope");
-
-const SELECT_COLUMNS =
-  "id, user_id, title, merchant, amount, type, category, category_id, payment_method, transaction_date, notes, receipt_url, created_at, updated_at";
-
-/**
- * Resolves a free-text category name to a category_id owned by the user,
- * mirroring the lookup logic the frontend previously performed directly
- * against Supabase.
- */
-async function resolveCategoryId(categoryName, userId) {
-  if (!categoryName) return null;
-
-  const { data, error } = await supabaseAdmin
-    .from("categories")
-    .select("id")
-    .eq("user_id", userId)
-    .or(`name.eq.${categoryName},title.eq.${categoryName}`)
-    .maybeSingle();
-
-  if (error) return null;
-  return data?.id ?? null;
-}
+const { workspaceIdForInsert } = require("../utils/workspaceScope");
+const transactionRepository = require("../repositories/transactionRepository");
+const transactionService = require("../services/transactionService");
 
 // @desc    Get all transactions for the authenticated user
 // @route   GET /api/transactions
 // @access  Private
-// Supports optional query params: type, category_id, from, to, page, limit
+// Supports optional query params: type, category_id, vendor_id,
+// employee_id, approval_status, payment_status, transaction_type,
+// from, to, page, limit
 const getTransactions = asyncHandler(async (req, res) => {
   const userId = req.user.id;
-  const { type, category_id, from, to, page = 1, limit = 50 } = req.query;
+  const {
+    type,
+    category_id,
+    vendor_id,
+    employee_id,
+    approval_status,
+    payment_status,
+    transaction_type,
+    from,
+    to,
+    page = 1,
+    limit = 50,
+  } = req.query;
 
-  let query = supabaseAdmin
-    .from("transactions")
-    .select(SELECT_COLUMNS, { count: "exact" })
-    .eq("user_id", userId)
-    .order("transaction_date", { ascending: false });
-
-  query = applyWorkspaceScope(query, req);
-
-  if (type) query = query.eq("type", type);
-  if (category_id) query = query.eq("category_id", category_id);
-  if (from) query = query.gte("transaction_date", from);
-  if (to) query = query.lte("transaction_date", to);
-
-  const pageNum = Math.max(parseInt(page, 10) || 1, 1);
-  const pageSize = Math.min(parseInt(limit, 10) || 50, 200);
-  const start = (pageNum - 1) * pageSize;
-  const end = start + pageSize - 1;
-  query = query.range(start, end);
-
-  const { data, error, count } = await query;
-
-  if (error) throw new ApiError(500, "Failed to fetch transactions", error.message);
+  const { rows, count, page: pageNum, pageSize } = await transactionRepository.listForUser(
+    userId,
+    {
+      workspaceId: req.workspace?.id,
+      type,
+      categoryId: category_id,
+      vendorId: vendor_id,
+      employeeId: employee_id,
+      approvalStatus: approval_status,
+      paymentStatus: payment_status,
+      transactionType: transaction_type,
+      from,
+      to,
+      page,
+      limit,
+    }
+  );
 
   return sendSuccess(res, {
     message: "Transactions fetched successfully",
     data: {
-      transactions: data || [],
+      transactions: rows,
       pagination: {
         page: pageNum,
         limit: pageSize,
-        total: count ?? data?.length ?? 0,
+        total: count,
       },
     },
   });
@@ -87,14 +93,8 @@ const getTransactionById = asyncHandler(async (req, res) => {
   const userId = req.user.id;
   const { id } = req.params;
 
-  const { data, error } = await supabaseAdmin
-    .from("transactions")
-    .select(SELECT_COLUMNS)
-    .eq("id", id)
-    .eq("user_id", userId)
-    .maybeSingle();
+  const data = await transactionRepository.findByIdForUser(id, userId);
 
-  if (error) throw new ApiError(500, "Failed to fetch transaction", error.message);
   if (!data) throw new ApiError(404, "Transaction not found");
 
   return sendSuccess(res, { message: "Transaction fetched successfully", data });
@@ -105,9 +105,49 @@ const getTransactionById = asyncHandler(async (req, res) => {
 // @access  Private
 const createTransaction = asyncHandler(async (req, res) => {
   const userId = req.user.id;
-  const { merchant, title, amount, type, category, paymentMethod, date, notes } = req.body;
+  const {
+    merchant,
+    title,
+    amount,
+    type,
+    categoryId,
+    paymentMethod,
+    date,
+    notes,
+    vendorId,
+    employeeId,
+    budgetId,
+    transactionType,
+    referenceNumber,
+    invoiceNumber,
+    approvalStatus,
+    paymentStatus,
+  } = req.body;
 
-  const categoryId = await resolveCategoryId(category, userId);
+  const workspaceId = workspaceIdForInsert(req);
+
+  // Enterprise fields: validate vendor/employee/budget belong to this
+  // workspace and that enum fields are valid, before touching storage
+  // or the DB. No-op for any field left undefined (personal-expense
+  // callers are unaffected).
+  await transactionService.validateEnterpriseFields(workspaceId, {
+    vendorId,
+    employeeId,
+    budgetId,
+    transactionType,
+    approvalStatus,
+    paymentStatus,
+  });
+
+  // Categories are single-sourced from the Categories table (see
+  // categoryService.js / PRD architecture: Categories -> Budgets ->
+  // Transactions). We only ever accept a category_id from the client,
+  // validate it belongs to this workspace, and derive the display name
+  // from the validated record itself — never from client-supplied text.
+  // The `category` text column is kept only as a denormalized cache for
+  // Reports/Analytics (analyticsService.js still groups by it) and is
+  // never independently trusted or user-editable.
+  const category = await transactionService.assertCategoryInWorkspace(categoryId, workspaceId);
 
   let receiptUrl = null;
   if (req.file) {
@@ -120,22 +160,32 @@ const createTransaction = asyncHandler(async (req, res) => {
     merchant: merchant || title,
     amount,
     type: type || "expense",
-    category: category || "Uncategorized",
-    category_id: categoryId,
+    transaction_type: transactionType || type || "expense",
+    category: category?.name || "Uncategorized",
+    category_id: category?.id || null,
     payment_method: paymentMethod || "Credit Card",
     transaction_date: date || new Date().toISOString(),
     notes: notes || "",
     receipt_url: receiptUrl,
-    workspace_id: workspaceIdForInsert(req),
+    workspace_id: workspaceId,
+    vendor_id: vendorId || null,
+    employee_id: employeeId || null,
+    budget_id: budgetId || null,
+    reference_number: referenceNumber || null,
+    invoice_number: invoiceNumber || null,
+    approval_status: approvalStatus || null,
+    payment_status: paymentStatus || null,
+    // transaction_source defaults to 'manual' at the DB level
+    // (migrations/002_enterprise_transactions.sql). Not set here yet —
+    // once import/API/recurring creation paths exist, they should pass
+    // their own source explicitly.
+    // created_by intentionally left null: no middleware currently
+    // resolves the acting employee record onto req.employee. Wire this
+    // once that middleware exists rather than guessing at req.user.id
+    // (user_id and employee_id are different entities in this schema).
   };
 
-  const { data, error } = await supabaseAdmin
-    .from("transactions")
-    .insert([payload])
-    .select(SELECT_COLUMNS)
-    .single();
-
-  if (error) throw new ApiError(500, "Failed to create transaction", error.message);
+  const data = await transactionRepository.create(payload);
 
   return sendSuccess(res, {
     statusCode: 201,
@@ -150,9 +200,54 @@ const createTransaction = asyncHandler(async (req, res) => {
 const updateTransaction = asyncHandler(async (req, res) => {
   const userId = req.user.id;
   const { id } = req.params;
-  const { merchant, title, amount, type, category, paymentMethod, date, notes } = req.body;
+  const {
+    merchant,
+    title,
+    amount,
+    type,
+    categoryId,
+    paymentMethod,
+    date,
+    notes,
+    vendorId,
+    employeeId,
+    budgetId,
+    transactionType,
+    referenceNumber,
+    invoiceNumber,
+    approvalStatus,
+    paymentStatus,
+  } = req.body;
 
-  const categoryId = category ? await resolveCategoryId(category, userId) : undefined;
+  // Only validate enterprise fields that are actually being changed on
+  // this update, same pattern as the rest of this function's undefined
+  // checks below.
+  if (
+    vendorId !== undefined ||
+    employeeId !== undefined ||
+    budgetId !== undefined ||
+    transactionType !== undefined ||
+    approvalStatus !== undefined ||
+    paymentStatus !== undefined
+  ) {
+    await transactionService.validateEnterpriseFields(req.workspace?.id, {
+      vendorId,
+      employeeId,
+      budgetId,
+      transactionType,
+      approvalStatus,
+      paymentStatus,
+    });
+  }
+
+  // Same single-source-of-truth rule as createTransaction: only validate/
+  // resolve category when the caller is actually changing it on this
+  // update (categoryId !== undefined), same pattern as the enterprise
+  // fields above.
+  const category =
+    categoryId !== undefined
+      ? await transactionService.assertCategoryInWorkspace(categoryId, req.workspace?.id)
+      : undefined;
 
   let receiptUrl;
   if (req.file) {
@@ -164,24 +259,27 @@ const updateTransaction = asyncHandler(async (req, res) => {
     ...(merchant !== undefined && { merchant }),
     ...(amount !== undefined && { amount }),
     ...(type !== undefined && { type }),
-    ...(category !== undefined && { category }),
-    ...(categoryId !== undefined && { category_id: categoryId }),
+    ...(categoryId !== undefined && {
+      category: category?.name || "Uncategorized",
+      category_id: category?.id || null,
+    }),
     ...(paymentMethod !== undefined && { payment_method: paymentMethod }),
     ...(date !== undefined && { transaction_date: date }),
     ...(notes !== undefined && { notes }),
     ...(receiptUrl !== undefined && { receipt_url: receiptUrl }),
+    ...(vendorId !== undefined && { vendor_id: vendorId }),
+    ...(employeeId !== undefined && { employee_id: employeeId }),
+    ...(budgetId !== undefined && { budget_id: budgetId }),
+    ...(transactionType !== undefined && { transaction_type: transactionType }),
+    ...(referenceNumber !== undefined && { reference_number: referenceNumber }),
+    ...(invoiceNumber !== undefined && { invoice_number: invoiceNumber }),
+    ...(approvalStatus !== undefined && { approval_status: approvalStatus }),
+    ...(paymentStatus !== undefined && { payment_status: paymentStatus }),
     updated_at: new Date().toISOString(),
   };
 
-  const { data, error } = await supabaseAdmin
-    .from("transactions")
-    .update(payload)
-    .eq("id", id)
-    .eq("user_id", userId)
-    .select(SELECT_COLUMNS)
-    .maybeSingle();
+  const data = await transactionRepository.updateForUser(id, userId, payload);
 
-  if (error) throw new ApiError(500, "Failed to update transaction", error.message);
   if (!data) throw new ApiError(404, "Transaction not found");
 
   return sendSuccess(res, { message: "Transaction updated successfully", data });
@@ -194,15 +292,8 @@ const deleteTransaction = asyncHandler(async (req, res) => {
   const userId = req.user.id;
   const { id } = req.params;
 
-  const { data, error } = await supabaseAdmin
-    .from("transactions")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", userId)
-    .select("id")
-    .maybeSingle();
+  const data = await transactionRepository.deleteForUser(id, userId);
 
-  if (error) throw new ApiError(500, "Failed to delete transaction", error.message);
   if (!data) throw new ApiError(404, "Transaction not found");
 
   return sendSuccess(res, { message: "Transaction deleted successfully", data: { id } });

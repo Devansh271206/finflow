@@ -20,6 +20,7 @@ import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import EmptyState from '../components/ui/EmptyState';
+import { Select, SelectItem } from '../components/ui/Select';
 import toast from 'react-hot-toast';
 import {
   getBudgets,
@@ -315,22 +316,21 @@ export const Budgets = () => {
         <form onSubmit={handleCreateBudget} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1.5">Category</label>
-            <select
+            <Select
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
               required
               disabled={categoriesLoading}
-              className="w-full rounded-xl bg-white/5 border border-white/10 text-sm text-white px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 disabled:opacity-50"
             >
-              <option value="" disabled>
+              <SelectItem value="" disabled>
                 {categoriesLoading ? 'Loading categories…' : 'Select a category'}
-              </option>
+              </SelectItem>
               {categories.map((c) => (
-                <option key={c.id} value={c.id}>
+                <SelectItem key={c.id} value={c.id}>
                   {c.name}
-                </option>
+                </SelectItem>
               ))}
-            </select>
+            </Select>
             {!categoriesLoading && categories.length === 0 && (
               <p className="text-[11px] text-amber-400 mt-1.5">
                 No expense categories yet — create one first.

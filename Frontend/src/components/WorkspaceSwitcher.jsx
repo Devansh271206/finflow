@@ -8,6 +8,7 @@ import { createWorkspace } from "../services/workspaceService";
 import Modal from "./ui/Modal";
 import Input from "./ui/Input";
 import Button from "./ui/Button";
+import { Select, SelectItem } from "./ui/Select";
 
 /**
  * WorkspaceSwitcher — Phase 1 addition, extended in Phase 2.1 with a
@@ -174,17 +175,16 @@ const WorkspaceSwitcher = () => {
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
                 Company
               </label>
-              <select
+              <Select
                 value={companyId}
                 onChange={(e) => setCompanyId(e.target.value)}
-                className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-sm py-3 px-4 outline-none focus:border-[#10b981]/50 focus:ring-1 focus:ring-[#10b981]/30 transition-all duration-200"
               >
                 {companies.map((c) => (
-                  <option key={c.id} value={c.id} className="bg-[#111827]">
+                  <SelectItem key={c.id} value={c.id}>
                     {c.name}
-                  </option>
+                  </SelectItem>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
 

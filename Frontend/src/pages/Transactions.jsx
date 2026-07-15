@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useApp } from '../context/AppContext';
+import * as LucideIcons from 'lucide-react';
 import {
   Search,
   Filter,
@@ -18,12 +19,31 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Badge from '../components/ui/Badge';
 import EmptyState from '../components/ui/EmptyState';
+import { Select, SelectItem } from '../components/ui/Select';
 import {
   getTransactions,
   addTransaction,
   updateTransaction,
   deleteTransaction,
 } from "../services/transactionService";
+import { getCategories } from "../services/categoryService";
+
+// Same color-name -> hex map used on the Dashboard (Dashboard.jsx
+// CATEGORY_COLORS) for rendering a category's saved `color` field
+// consistently wherever it appears.
+const CATEGORY_COLORS = {
+  emerald: '#10b981', blue: '#3b82f6', amber: '#f59e0b',
+  purple: '#a855f7', rose: '#f43f5e', pink: '#ec4899',
+  teal: '#14b8a6', orange: '#f97316', cyan: '#06b6d4',
+};
+
+// Resolves a category's saved `icon` field (a lucide-react icon name,
+// e.g. "CreditCard") to the actual component, falling back to a generic
+// icon if the stored name doesn't match a known lucide icon.
+const CategoryIcon = ({ name, size = 12, className = '' }) => {
+  const Icon = LucideIcons[name] || LucideIcons.CreditCard;
+  return <Icon size={size} className={className} />;
+};
 
 export const Transactions = () => {
   const { settings } = useApp();
@@ -52,25 +72,46 @@ export const Transactions = () => {
   // Form states
   const [merchant, setMerchant] = useState('');
   const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('Groceries');
+  const [categoryId, setCategoryId] = useState('');
   const [type, setType] = useState('expense');
   const [method, setMethod] = useState('Credit Card');
   const [status, setStatus] = useState('Completed');
   const [date, setDate] = useState('');
   const [receiptImage, setReceiptImage] = useState(null);
 
-  // Categories list derived
-  const categories = useMemo(() => {
-    const set = new Set(transactions.map(t => t.category));
-    return ['all', ...Array.from(set)];
-  }, [transactions]);
+  // Master categories list — the single source of truth shared with
+  // Budgets (see categoryService.js / Categories module). Loaded once
+  // from the existing Categories API; never hardcoded here.
+  const [masterCategories, setMasterCategories] = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+
+  // Active categories split by type for the Add/Edit form dropdowns,
+  // sorted using the categories' own sort_order (already applied by the
+  // API — see categoryRepository.listByWorkspace).
+  const expenseCategories = useMemo(
+    () => masterCategories.filter((c) => (c.type || 'expense') === 'expense'),
+    [masterCategories]
+  );
+  const incomeCategories = useMemo(
+    () => masterCategories.filter((c) => c.type === 'income'),
+    [masterCategories]
+  );
+  const categoriesForCurrentType = type === 'income' ? incomeCategories : expenseCategories;
+
+  // Category filter dropdown options — built from the same master list,
+  // keyed by category_id (not name), so filtering stays correct even if
+  // two categories share a display name.
+  const categories = useMemo(
+    () => [{ id: 'all', name: 'All Categories' }, ...masterCategories.map((c) => ({ id: c.id, name: c.name }))],
+    [masterCategories]
+  );
 
   // Filtered transactions
   const filteredTx = useMemo(() => {
     return transactions.filter(t => {
       const matchSearch = t.merchant.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           t.category.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchCategory = filterCategory === 'all' || t.category === filterCategory;
+      const matchCategory = filterCategory === 'all' || t.category_id === filterCategory;
       const matchType = filterType === 'all' || t.type === filterType;
       const matchStatus = filterStatus === 'all' || t.status === filterStatus;
 
@@ -89,7 +130,25 @@ export const Transactions = () => {
 
   useEffect(() => {
     loadTransactions();
+    loadCategories();
   }, []);
+
+  async function loadCategories() {
+    setCategoriesLoading(true);
+    // Reuses the existing Categories API (categoryService.js /
+    // GET /api/categories) — the same endpoint Budgets.jsx already
+    // consumes. Filtering to status=active means inactive/deactivated
+    // categories can never be selected here; sort_order is applied by
+    // the backend (categoryRepository.listByWorkspace).
+    const { data, error } = await getCategories({ status: 'active' });
+    if (!error) {
+      setMasterCategories(data || []);
+    } else {
+      console.error(error);
+      setErrorMessage((prev) => prev || error.message || 'Unable to load categories.');
+    }
+    setCategoriesLoading(false);
+  }
 
   async function loadTransactions() {
     setLoading(true);
@@ -125,7 +184,7 @@ export const Transactions = () => {
   // Form Handlers
   const handleAddSubmit = async (e) => {
     e.preventDefault();
-    if (!merchant || !amount || !date) return;
+    if (!merchant || !amount || !date || !categoryId) return;
 
     setSaving(true);
     setErrorMessage('');
@@ -134,7 +193,7 @@ export const Transactions = () => {
       const { error } = await addTransaction({
         merchant,
         amount: Number(amount),
-        category,
+        categoryId,
         type,
         paymentMethod: method,
         status,
@@ -161,7 +220,7 @@ export const Transactions = () => {
     setSelectedTx(tx);
     setMerchant(tx.merchant);
     setAmount(Math.abs(tx.amount).toString());
-    setCategory(tx.category);
+    setCategoryId(tx.category_id || '');
     setType(tx.type);
     setMethod(tx.paymentMethod);
     setStatus(tx.status);
@@ -172,7 +231,7 @@ export const Transactions = () => {
 
   const handleEditSubmit = async (e) => {
     e.preventDefault();
-    if (!merchant || !amount || !date) return;
+    if (!merchant || !amount || !date || !categoryId) return;
 
     setSaving(true);
     setErrorMessage('');
@@ -181,7 +240,7 @@ export const Transactions = () => {
       const { error } = await updateTransaction(selectedTx.id, {
         merchant,
         amount: Number(amount),
-        category,
+        categoryId,
         type,
         paymentMethod: method,
         status,
@@ -239,7 +298,7 @@ export const Transactions = () => {
   const resetForm = () => {
     setMerchant('');
     setAmount('');
-    setCategory('Groceries');
+    setCategoryId('');
     setType('expense');
     setMethod('Credit Card');
     setStatus('Completed');
@@ -307,48 +366,45 @@ export const Transactions = () => {
           </div>
 
           <div>
-            <select
+            <Select
               value={filterCategory}
               onChange={(e) => {
                 setFilterCategory(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-xs py-3 px-4 outline-none focus:border-[#10b981]/50 transition-all duration-200"
             >
-              <option value="all" className="bg-[#111827]">All Categories</option>
-              {categories.filter(c => c !== 'all').map(cat => (
-                <option key={cat} value={cat} className="bg-[#111827]">{cat}</option>
+              <SelectItem value="all">All Categories</SelectItem>
+              {categories.filter(c => c.id !== 'all').map(cat => (
+                <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <select
+            <Select
               value={filterType}
               onChange={(e) => {
                 setFilterType(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-xs py-3 px-3 outline-none focus:border-[#10b981]/50 transition-all"
             >
-              <option value="all" className="bg-[#111827]">All Types</option>
-              <option value="income" className="bg-[#111827]">Income</option>
-              <option value="expense" className="bg-[#111827]">Expense</option>
-            </select>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="income">Income</SelectItem>
+              <SelectItem value="expense">Expense</SelectItem>
+            </Select>
 
-            <select
+            <Select
               value={filterStatus}
               onChange={(e) => {
                 setFilterStatus(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-xs py-3 px-3 outline-none focus:border-[#10b981]/50 transition-all"
             >
-              <option value="all" className="bg-[#111827]">All Status</option>
-              <option value="Completed" className="bg-[#111827]">Completed</option>
-              <option value="Pending" className="bg-[#111827]">Pending</option>
-              <option value="Failed" className="bg-[#111827]">Failed</option>
-            </select>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="Completed">Completed</SelectItem>
+              <SelectItem value="Pending">Pending</SelectItem>
+              <SelectItem value="Failed">Failed</SelectItem>
+            </Select>
           </div>
         </div>
       </div>
@@ -485,14 +541,14 @@ export const Transactions = () => {
           <div className="grid grid-cols-2 gap-3 p-1 bg-white/5 rounded-xl">
             <button
               type="button"
-              onClick={() => setType('expense')}
+              onClick={() => { setType('expense'); setCategoryId(''); }}
               className={`py-2 text-xs font-bold rounded-lg transition-all ${type === 'expense' ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30' : 'text-slate-400'}`}
             >
               Expense
             </button>
             <button
               type="button"
-              onClick={() => setType('income')}
+              onClick={() => { setType('income'); setCategoryId(''); }}
               className={`py-2 text-xs font-bold rounded-lg transition-all ${type === 'income' ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30' : 'text-slate-400'}`}
             >
               Income
@@ -520,46 +576,46 @@ export const Transactions = () => {
 
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Category</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-sm py-3 px-4 outline-none focus:border-[#10b981]/50 transition-all duration-200"
+              <Select
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+                disabled={categoriesLoading}
+                required
               >
-                {type === 'income' ? (
-                  <>
-                    <option value="Salary" className="bg-[#111827]">Salary</option>
-                    <option value="Investment" className="bg-[#111827]">Investment</option>
-                    <option value="Freelance" className="bg-[#111827]">Freelance</option>
-                    <option value="Refund" className="bg-[#111827]">Refund</option>
-                  </>
+                {categoriesLoading ? (
+                  <SelectItem value="" disabled>Loading categories…</SelectItem>
+                ) : categoriesForCurrentType.length === 0 ? (
+                  <SelectItem value="" disabled>No {type} categories yet</SelectItem>
                 ) : (
-                  <>
-                    <option value="Groceries" className="bg-[#111827]">Groceries</option>
-                    <option value="Software" className="bg-[#111827]">Software</option>
-                    <option value="Dining Out" className="bg-[#111827]">Dining Out</option>
-                    <option value="Shopping" className="bg-[#111827]">Shopping</option>
-                    <option value="Transport" className="bg-[#111827]">Transport</option>
-                    <option value="Travel" className="bg-[#111827]">Travel</option>
-                    <option value="Entertainment" className="bg-[#111827]">Entertainment</option>
-                  </>
+                  categoriesForCurrentType.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: CATEGORY_COLORS[cat.color] || '#6366f1' }}
+                        />
+                        <CategoryIcon name={cat.icon} className="text-slate-400 shrink-0" />
+                        {cat.name}
+                      </span>
+                    </SelectItem>
+                  ))
                 )}
-              </select>
+              </Select>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Payment Method</label>
-              <select
+              <Select
                 value={method}
                 onChange={(e) => setMethod(e.target.value)}
-                className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-sm py-3 px-4 outline-none focus:border-[#10b981]/50"
               >
-                <option value="Credit Card" className="bg-[#111827]">Credit Card</option>
-                <option value="Bank Transfer" className="bg-[#111827]">Bank Transfer</option>
-                <option value="Apple Pay" className="bg-[#111827]">Apple Pay</option>
-                <option value="PayPal" className="bg-[#111827]">PayPal</option>
-              </select>
+                <SelectItem value="Credit Card">Credit Card</SelectItem>
+                <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                <SelectItem value="Apple Pay">Apple Pay</SelectItem>
+                <SelectItem value="PayPal">PayPal</SelectItem>
+              </Select>
             </div>
 
             <div>
@@ -575,15 +631,14 @@ export const Transactions = () => {
 
           <div>
             <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Status</label>
-            <select
+            <Select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-sm py-3 px-4 outline-none focus:border-[#10b981]/50"
             >
-              <option value="Completed" className="bg-[#111827]">Completed</option>
-              <option value="Pending" className="bg-[#111827]">Pending</option>
-              <option value="Failed" className="bg-[#111827]">Failed</option>
-            </select>
+              <SelectItem value="Completed">Completed</SelectItem>
+              <SelectItem value="Pending">Pending</SelectItem>
+              <SelectItem value="Failed">Failed</SelectItem>
+            </Select>
           </div>
 
           {/* Receipt Upload */}
@@ -610,14 +665,14 @@ export const Transactions = () => {
           <div className="grid grid-cols-2 gap-3 p-1 bg-white/5 rounded-xl">
             <button
               type="button"
-              onClick={() => setType('expense')}
+              onClick={() => { setType('expense'); setCategoryId(''); }}
               className={`py-2 text-xs font-bold rounded-lg transition-all ${type === 'expense' ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30' : 'text-slate-400'}`}
             >
               Expense
             </button>
             <button
               type="button"
-              onClick={() => setType('income')}
+              onClick={() => { setType('income'); setCategoryId(''); }}
               className={`py-2 text-xs font-bold rounded-lg transition-all ${type === 'income' ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30' : 'text-slate-400'}`}
             >
               Income
@@ -643,46 +698,46 @@ export const Transactions = () => {
 
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Category</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-sm py-3 px-4 outline-none focus:border-[#10b981]/50"
+              <Select
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+                disabled={categoriesLoading}
+                required
               >
-                {type === 'income' ? (
-                  <>
-                    <option value="Salary" className="bg-[#111827]">Salary</option>
-                    <option value="Investment" className="bg-[#111827]">Investment</option>
-                    <option value="Freelance" className="bg-[#111827]">Freelance</option>
-                    <option value="Refund" className="bg-[#111827]">Refund</option>
-                  </>
+                {categoriesLoading ? (
+                  <SelectItem value="" disabled>Loading categories…</SelectItem>
+                ) : categoriesForCurrentType.length === 0 ? (
+                  <SelectItem value="" disabled>No {type} categories yet</SelectItem>
                 ) : (
-                  <>
-                    <option value="Groceries" className="bg-[#111827]">Groceries</option>
-                    <option value="Software" className="bg-[#111827]">Software</option>
-                    <option value="Dining Out" className="bg-[#111827]">Dining Out</option>
-                    <option value="Shopping" className="bg-[#111827]">Shopping</option>
-                    <option value="Transport" className="bg-[#111827]">Transport</option>
-                    <option value="Travel" className="bg-[#111827]">Travel</option>
-                    <option value="Entertainment" className="bg-[#111827]">Entertainment</option>
-                  </>
+                  categoriesForCurrentType.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: CATEGORY_COLORS[cat.color] || '#6366f1' }}
+                        />
+                        <CategoryIcon name={cat.icon} className="text-slate-400 shrink-0" />
+                        {cat.name}
+                      </span>
+                    </SelectItem>
+                  ))
                 )}
-              </select>
+              </Select>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Payment Method</label>
-              <select
+              <Select
                 value={method}
                 onChange={(e) => setMethod(e.target.value)}
-                className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-sm py-3 px-4 outline-none"
               >
-                <option value="Credit Card" className="bg-[#111827]">Credit Card</option>
-                <option value="Bank Transfer" className="bg-[#111827]">Bank Transfer</option>
-                <option value="Apple Pay" className="bg-[#111827]">Apple Pay</option>
-                <option value="PayPal" className="bg-[#111827]">PayPal</option>
-              </select>
+                <SelectItem value="Credit Card">Credit Card</SelectItem>
+                <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                <SelectItem value="Apple Pay">Apple Pay</SelectItem>
+                <SelectItem value="PayPal">PayPal</SelectItem>
+              </Select>
             </div>
 
             <div>
@@ -698,15 +753,14 @@ export const Transactions = () => {
 
           <div>
             <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Status</label>
-            <select
+            <Select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-sm py-3 px-4 outline-none"
             >
-              <option value="Completed" className="bg-[#111827]">Completed</option>
-              <option value="Pending" className="bg-[#111827]">Pending</option>
-              <option value="Failed" className="bg-[#111827]">Failed</option>
-            </select>
+              <SelectItem value="Completed">Completed</SelectItem>
+              <SelectItem value="Pending">Pending</SelectItem>
+              <SelectItem value="Failed">Failed</SelectItem>
+            </Select>
           </div>
 
           <Button type="submit" className="w-full justify-center" loading={saving} disabled={saving}>

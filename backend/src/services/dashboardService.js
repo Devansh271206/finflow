@@ -4,21 +4,28 @@
  * Pure business-logic layer for computing the metrics shown on the
  * FinFlow dashboard. Kept separate from the controller so the
  * calculations are unit-testable and reusable (e.g. by analyticsService).
+ *
+ * Phase F.7: workspace-scoped (was user_id-only — cross-tenant leak risk
+ * pre-fix). Dual-scoped by both user_id and workspace_id, same pattern
+ * as transactionRepository, so behavior is unchanged for any caller with
+ * no resolved workspace.
+ *
+ * NOTE: This remains the existing personal-finance-style dashboard
+ * (balance/income/expenses/health score). It is NOT the Executive/HR/
+ * Finance dashboards from PRD §15.9-15.11 — those are new modules that
+ * depend on Employees/Payroll/Vendors data that doesn't exist yet, and
+ * are out of scope for this phase.
  */
 
 const { supabaseAdmin } = require("../config/supabase");
 const ApiError = require("../utils/ApiError");
 
-function startOfMonth(date) {
-  return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
 function monthKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
-async function fetchAllTransactions(userId) {
-  const { data, error } = await supabaseAdmin
+async function fetchAllTransactions(userId, workspaceId) {
+  let query = supabaseAdmin
     .from("transactions")
     .select(
       "id, amount, type, category, category_id, payment_method, transaction_date, merchant, title, notes, receipt_url, created_at"
@@ -26,16 +33,18 @@ async function fetchAllTransactions(userId) {
     .eq("user_id", userId)
     .order("transaction_date", { ascending: false });
 
+  if (workspaceId) query = query.eq("workspace_id", workspaceId);
+
+  const { data, error } = await query;
   if (error) throw new ApiError(500, "Failed to fetch transactions for dashboard", error.message);
   return data || [];
 }
 
-async function fetchBudgetsWithSpend(userId, transactions) {
-  const { data: budgets, error } = await supabaseAdmin
-    .from("budgets")
-    .select("*")
-    .eq("user_id", userId);
+async function fetchBudgetsWithSpend(userId, workspaceId, transactions) {
+  let query = supabaseAdmin.from("budgets").select("*").eq("user_id", userId);
+  if (workspaceId) query = query.eq("workspace_id", workspaceId);
 
+  const { data: budgets, error } = await query;
   if (error) throw new ApiError(500, "Failed to fetch budgets for dashboard", error.message);
 
   const spentByCategoryId = new Map();
@@ -48,7 +57,7 @@ async function fetchBudgetsWithSpend(userId, transactions) {
 
   return (budgets || []).map((b) => {
     const spent = spentByCategoryId.get(b.category_id || "uncategorized") || 0;
-    const limit = Number(b.monthly_limit || 0);
+    const limit = Number(b.amount_limit ?? b.monthly_limit ?? 0);
     return {
       id: b.id,
       category_id: b.category_id,
@@ -84,10 +93,11 @@ function computeFinancialHealthScore({ income, expenses, budgets }) {
 /**
  * Builds the full dashboard payload: balance, income, expenses, cash flow,
  * recent transactions, monthly summary (last 6 months), budget utilization,
- * and an overall financial health score.
+ * and an overall financial health score. Scoped to the resolved workspace
+ * when one is present; falls back to user_id-only for legacy callers.
  */
-async function getDashboardSummary(userId) {
-  const transactions = await fetchAllTransactions(userId);
+async function getDashboardSummary(userId, workspaceId) {
+  const transactions = await fetchAllTransactions(userId, workspaceId);
 
   const income = transactions
     .filter((t) => t.type === "income")
@@ -131,7 +141,7 @@ async function getDashboardSummary(userId) {
     net: monthlyBuckets[m].income - monthlyBuckets[m].expenses,
   }));
 
-  const budgetUtilization = await fetchBudgetsWithSpend(userId, transactions);
+  const budgetUtilization = await fetchBudgetsWithSpend(userId, workspaceId, transactions);
 
   const financialHealthScore = computeFinancialHealthScore({
     income,
@@ -151,4 +161,4 @@ async function getDashboardSummary(userId) {
   };
 }
 
-module.exports = { getDashboardSummary, fetchAllTransactions, startOfMonth, monthKey };
+module.exports = { getDashboardSummary, fetchAllTransactions, monthKey };

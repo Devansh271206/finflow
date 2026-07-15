@@ -29,6 +29,9 @@ const companyRoutes = require("./routes/companyRoutes");
 const workspaceRoutes = require("./routes/workspaceRoutes");
 const roleRoutes = require("./routes/roleRoutes");
 const departmentRoutes = require("./routes/departmentRoutes");
+const employeeRoutes = require("./routes/employeeRoutes");
+
+const membershipRoutes = require("./routes/membershipRoutes");
 
 const app = express();
 
@@ -86,6 +89,8 @@ app.use("/api/companies", companyRoutes);
 app.use("/api/workspaces", workspaceRoutes);
 app.use("/api/roles", roleRoutes);
 app.use("/api/departments", departmentRoutes);
+app.use("/api/employees", employeeRoutes);
+app.use("/api/memberships", membershipRoutes);   // <-- add this line (was require'd on line 33 but never mounted — every team-management endpoint was 404ing)
 
 // ------------------------------------------------------------------
 // 404 + centralized error handling (must be registered last)
