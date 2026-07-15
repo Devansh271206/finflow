@@ -15,8 +15,6 @@ import Transactions from './pages/Transactions';
 import Budgets from './pages/Budgets';
 import Analytics from './pages/Analytics';
 import Goals from './pages/Goals';
-import AIInsights from './pages/AIInsights';
-import AIAssistant from './pages/AIAssistant';
 import Reports from './pages/Reports';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
@@ -96,16 +94,6 @@ const AnimatedRoutes = () => {
         <Route path="/team" element={
           <ProtectedRoute>
             <PageTransition><TeamManagement /></PageTransition>
-          </ProtectedRoute>
-        } />
-        <Route path="/insights" element={
-          <ProtectedRoute>
-            <PageTransition><AIInsights /></PageTransition>
-          </ProtectedRoute>
-        } />
-        <Route path="/assistant" element={
-          <ProtectedRoute>
-            <PageTransition><AIAssistant /></PageTransition>
           </ProtectedRoute>
         } />
         <Route path="/reports" element={

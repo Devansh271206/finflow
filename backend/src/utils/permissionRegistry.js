@@ -17,6 +17,8 @@ const PERMISSIONS = Object.freeze({
   TEAM_MANAGE: "team.manage",
   DEPARTMENTS_MANAGE: "departments.manage",
   DEPARTMENTS_READ: "departments.read",
+  EMPLOYEES_MANAGE: "employees.manage",
+  EMPLOYEES_READ: "employees.read",
   CATEGORIES_MANAGE: "categories.manage",
   CATEGORIES_READ: "categories.read",
   TRANSACTIONS_CREATE: "transactions.create",

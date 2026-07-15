@@ -28,7 +28,7 @@ function buildTransactionPayload(transaction) {
     paymentMethod: transaction.paymentMethod,
     date: transaction.date,
     notes: transaction.notes || "",
-    category: transaction.category,
+    categoryId: transaction.categoryId,
     receiptImage: transaction.receiptImage || null,
   };
 }

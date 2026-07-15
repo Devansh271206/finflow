@@ -4,6 +4,11 @@
  * Pure business-logic layer for the /api/analytics endpoints:
  * expense-by-category, income vs expense, monthly/weekly spending,
  * cash flow trend, and savings growth over time.
+ *
+ * Phase F.7: workspace-scoped (was user_id-only). getSavingsGrowth no
+ * longer reads from `goals` — that table is marked for deprecation per
+ * PRD §11.4, so this now always uses the cumulative-cash-flow fallback
+ * the old code already had, rather than fixing dead-end logic.
  */
 
 const { supabaseAdmin } = require("../config/supabase");
@@ -23,19 +28,22 @@ function weekKey(date) {
   return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
 }
 
-async function fetchTransactions(userId) {
-  const { data, error } = await supabaseAdmin
+async function fetchTransactions(userId, workspaceId) {
+  let query = supabaseAdmin
     .from("transactions")
     .select("amount, type, category, category_id, transaction_date, created_at")
     .eq("user_id", userId);
 
+  if (workspaceId) query = query.eq("workspace_id", workspaceId);
+
+  const { data, error } = await query;
   if (error) throw new ApiError(500, "Failed to fetch transactions for analytics", error.message);
   return data || [];
 }
 
 // Expense totals grouped by category (for pie/donut charts).
-async function getExpenseByCategory(userId) {
-  const transactions = await fetchTransactions(userId);
+async function getExpenseByCategory(userId, workspaceId) {
+  const transactions = await fetchTransactions(userId, workspaceId);
   const byCategory = new Map();
 
   transactions
@@ -52,8 +60,8 @@ async function getExpenseByCategory(userId) {
 }
 
 // Monthly income vs expense totals (trailing 6 months) for bar charts.
-async function getIncomeVsExpense(userId) {
-  const transactions = await fetchTransactions(userId);
+async function getIncomeVsExpense(userId, workspaceId) {
+  const transactions = await fetchTransactions(userId, workspaceId);
   const now = new Date();
   const months = [];
   for (let i = 5; i >= 0; i--) {
@@ -78,8 +86,8 @@ async function getIncomeVsExpense(userId) {
 }
 
 // Daily spend total for the current month (for a line/area chart).
-async function getMonthlySpending(userId) {
-  const transactions = await fetchTransactions(userId);
+async function getMonthlySpending(userId, workspaceId) {
+  const transactions = await fetchTransactions(userId, workspaceId);
   const now = new Date();
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
 
@@ -101,8 +109,8 @@ async function getMonthlySpending(userId) {
 }
 
 // Weekly spend totals for the trailing 8 weeks (for a line chart).
-async function getWeeklySpending(userId) {
-  const transactions = await fetchTransactions(userId);
+async function getWeeklySpending(userId, workspaceId) {
+  const transactions = await fetchTransactions(userId, workspaceId);
   const now = new Date();
 
   const weeks = [];
@@ -128,8 +136,8 @@ async function getWeeklySpending(userId) {
 }
 
 // Cumulative net cash flow over the trailing 6 months.
-async function getCashFlowTrend(userId) {
-  const incomeVsExpense = await getIncomeVsExpense(userId);
+async function getCashFlowTrend(userId, workspaceId) {
+  const incomeVsExpense = await getIncomeVsExpense(userId, workspaceId);
   let cumulative = 0;
 
   return incomeVsExpense.map((m) => {
@@ -143,28 +151,11 @@ async function getCashFlowTrend(userId) {
   });
 }
 
-// Cumulative savings (goals saved_amount) growth over time, based on goal updates,
-// falling back to net cash flow accumulation if no goals exist.
-async function getSavingsGrowth(userId) {
-  const { data: goals, error } = await supabaseAdmin
-    .from("goals")
-    .select("saved_amount, created_at")
-    .eq("user_id", userId);
-
-  if (error) throw new ApiError(500, "Failed to fetch goals for savings growth", error.message);
-
-  if (goals && goals.length > 0) {
-    const totalSaved = goals.reduce((sum, g) => sum + Number(g.saved_amount || 0), 0);
-    const cashFlowTrend = await getCashFlowTrend(userId);
-    // Distribute total saved proportionally across the cumulative cash flow trend
-    // to give a visual growth curve when explicit historical snapshots aren't stored.
-    return cashFlowTrend.map((m, idx) => ({
-      month: m.month,
-      savings: Math.round(((totalSaved * (idx + 1)) / cashFlowTrend.length) * 100) / 100,
-    }));
-  }
-
-  const cashFlowTrend = await getCashFlowTrend(userId);
+// Cumulative savings growth over time, derived purely from net cash flow
+// accumulation. (Previously blended in `goals.saved_amount` when goals
+// existed — removed per PRD §11.4, goals is deprecated.)
+async function getSavingsGrowth(userId, workspaceId) {
+  const cashFlowTrend = await getCashFlowTrend(userId, workspaceId);
   return cashFlowTrend.map((m) => ({ month: m.month, savings: Math.max(m.cumulative, 0) }));
 }
 
