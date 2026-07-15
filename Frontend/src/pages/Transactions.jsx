@@ -18,6 +18,7 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Badge from '../components/ui/Badge';
 import EmptyState from '../components/ui/EmptyState';
+import { Select, SelectItem } from '../components/ui/Select';
 import {
   getTransactions,
   addTransaction,
@@ -307,48 +308,45 @@ export const Transactions = () => {
           </div>
 
           <div>
-            <select
+            <Select
               value={filterCategory}
               onChange={(e) => {
                 setFilterCategory(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-xs py-3 px-4 outline-none focus:border-[#10b981]/50 transition-all duration-200"
             >
-              <option value="all" className="bg-[#111827]">All Categories</option>
+              <SelectItem value="all">All Categories</SelectItem>
               {categories.filter(c => c !== 'all').map(cat => (
-                <option key={cat} value={cat} className="bg-[#111827]">{cat}</option>
+                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <select
+            <Select
               value={filterType}
               onChange={(e) => {
                 setFilterType(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-xs py-3 px-3 outline-none focus:border-[#10b981]/50 transition-all"
             >
-              <option value="all" className="bg-[#111827]">All Types</option>
-              <option value="income" className="bg-[#111827]">Income</option>
-              <option value="expense" className="bg-[#111827]">Expense</option>
-            </select>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="income">Income</SelectItem>
+              <SelectItem value="expense">Expense</SelectItem>
+            </Select>
 
-            <select
+            <Select
               value={filterStatus}
               onChange={(e) => {
                 setFilterStatus(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-xs py-3 px-3 outline-none focus:border-[#10b981]/50 transition-all"
             >
-              <option value="all" className="bg-[#111827]">All Status</option>
-              <option value="Completed" className="bg-[#111827]">Completed</option>
-              <option value="Pending" className="bg-[#111827]">Pending</option>
-              <option value="Failed" className="bg-[#111827]">Failed</option>
-            </select>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="Completed">Completed</SelectItem>
+              <SelectItem value="Pending">Pending</SelectItem>
+              <SelectItem value="Failed">Failed</SelectItem>
+            </Select>
           </div>
         </div>
       </div>
@@ -520,46 +518,44 @@ export const Transactions = () => {
 
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Category</label>
-              <select
+              <Select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-sm py-3 px-4 outline-none focus:border-[#10b981]/50 transition-all duration-200"
               >
                 {type === 'income' ? (
                   <>
-                    <option value="Salary" className="bg-[#111827]">Salary</option>
-                    <option value="Investment" className="bg-[#111827]">Investment</option>
-                    <option value="Freelance" className="bg-[#111827]">Freelance</option>
-                    <option value="Refund" className="bg-[#111827]">Refund</option>
+                    <SelectItem value="Salary">Salary</SelectItem>
+                    <SelectItem value="Investment">Investment</SelectItem>
+                    <SelectItem value="Freelance">Freelance</SelectItem>
+                    <SelectItem value="Refund">Refund</SelectItem>
                   </>
                 ) : (
                   <>
-                    <option value="Groceries" className="bg-[#111827]">Groceries</option>
-                    <option value="Software" className="bg-[#111827]">Software</option>
-                    <option value="Dining Out" className="bg-[#111827]">Dining Out</option>
-                    <option value="Shopping" className="bg-[#111827]">Shopping</option>
-                    <option value="Transport" className="bg-[#111827]">Transport</option>
-                    <option value="Travel" className="bg-[#111827]">Travel</option>
-                    <option value="Entertainment" className="bg-[#111827]">Entertainment</option>
+                    <SelectItem value="Groceries">Groceries</SelectItem>
+                    <SelectItem value="Software">Software</SelectItem>
+                    <SelectItem value="Dining Out">Dining Out</SelectItem>
+                    <SelectItem value="Shopping">Shopping</SelectItem>
+                    <SelectItem value="Transport">Transport</SelectItem>
+                    <SelectItem value="Travel">Travel</SelectItem>
+                    <SelectItem value="Entertainment">Entertainment</SelectItem>
                   </>
                 )}
-              </select>
+              </Select>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Payment Method</label>
-              <select
+              <Select
                 value={method}
                 onChange={(e) => setMethod(e.target.value)}
-                className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-sm py-3 px-4 outline-none focus:border-[#10b981]/50"
               >
-                <option value="Credit Card" className="bg-[#111827]">Credit Card</option>
-                <option value="Bank Transfer" className="bg-[#111827]">Bank Transfer</option>
-                <option value="Apple Pay" className="bg-[#111827]">Apple Pay</option>
-                <option value="PayPal" className="bg-[#111827]">PayPal</option>
-              </select>
+                <SelectItem value="Credit Card">Credit Card</SelectItem>
+                <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                <SelectItem value="Apple Pay">Apple Pay</SelectItem>
+                <SelectItem value="PayPal">PayPal</SelectItem>
+              </Select>
             </div>
 
             <div>
@@ -575,15 +571,14 @@ export const Transactions = () => {
 
           <div>
             <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Status</label>
-            <select
+            <Select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-sm py-3 px-4 outline-none focus:border-[#10b981]/50"
             >
-              <option value="Completed" className="bg-[#111827]">Completed</option>
-              <option value="Pending" className="bg-[#111827]">Pending</option>
-              <option value="Failed" className="bg-[#111827]">Failed</option>
-            </select>
+              <SelectItem value="Completed">Completed</SelectItem>
+              <SelectItem value="Pending">Pending</SelectItem>
+              <SelectItem value="Failed">Failed</SelectItem>
+            </Select>
           </div>
 
           {/* Receipt Upload */}
@@ -643,46 +638,44 @@ export const Transactions = () => {
 
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Category</label>
-              <select
+              <Select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-sm py-3 px-4 outline-none focus:border-[#10b981]/50"
               >
                 {type === 'income' ? (
                   <>
-                    <option value="Salary" className="bg-[#111827]">Salary</option>
-                    <option value="Investment" className="bg-[#111827]">Investment</option>
-                    <option value="Freelance" className="bg-[#111827]">Freelance</option>
-                    <option value="Refund" className="bg-[#111827]">Refund</option>
+                    <SelectItem value="Salary">Salary</SelectItem>
+                    <SelectItem value="Investment">Investment</SelectItem>
+                    <SelectItem value="Freelance">Freelance</SelectItem>
+                    <SelectItem value="Refund">Refund</SelectItem>
                   </>
                 ) : (
                   <>
-                    <option value="Groceries" className="bg-[#111827]">Groceries</option>
-                    <option value="Software" className="bg-[#111827]">Software</option>
-                    <option value="Dining Out" className="bg-[#111827]">Dining Out</option>
-                    <option value="Shopping" className="bg-[#111827]">Shopping</option>
-                    <option value="Transport" className="bg-[#111827]">Transport</option>
-                    <option value="Travel" className="bg-[#111827]">Travel</option>
-                    <option value="Entertainment" className="bg-[#111827]">Entertainment</option>
+                    <SelectItem value="Groceries">Groceries</SelectItem>
+                    <SelectItem value="Software">Software</SelectItem>
+                    <SelectItem value="Dining Out">Dining Out</SelectItem>
+                    <SelectItem value="Shopping">Shopping</SelectItem>
+                    <SelectItem value="Transport">Transport</SelectItem>
+                    <SelectItem value="Travel">Travel</SelectItem>
+                    <SelectItem value="Entertainment">Entertainment</SelectItem>
                   </>
                 )}
-              </select>
+              </Select>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Payment Method</label>
-              <select
+              <Select
                 value={method}
                 onChange={(e) => setMethod(e.target.value)}
-                className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-sm py-3 px-4 outline-none"
               >
-                <option value="Credit Card" className="bg-[#111827]">Credit Card</option>
-                <option value="Bank Transfer" className="bg-[#111827]">Bank Transfer</option>
-                <option value="Apple Pay" className="bg-[#111827]">Apple Pay</option>
-                <option value="PayPal" className="bg-[#111827]">PayPal</option>
-              </select>
+                <SelectItem value="Credit Card">Credit Card</SelectItem>
+                <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                <SelectItem value="Apple Pay">Apple Pay</SelectItem>
+                <SelectItem value="PayPal">PayPal</SelectItem>
+              </Select>
             </div>
 
             <div>
@@ -698,15 +691,14 @@ export const Transactions = () => {
 
           <div>
             <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Status</label>
-            <select
+            <Select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-sm py-3 px-4 outline-none"
             >
-              <option value="Completed" className="bg-[#111827]">Completed</option>
-              <option value="Pending" className="bg-[#111827]">Pending</option>
-              <option value="Failed" className="bg-[#111827]">Failed</option>
-            </select>
+              <SelectItem value="Completed">Completed</SelectItem>
+              <SelectItem value="Pending">Pending</SelectItem>
+              <SelectItem value="Failed">Failed</SelectItem>
+            </Select>
           </div>
 
           <Button type="submit" className="w-full justify-center" loading={saving} disabled={saving}>

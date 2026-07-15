@@ -8,6 +8,7 @@ import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
 import Skeleton from '../components/ui/Skeleton';
 import EmptyState from '../components/ui/EmptyState';
+import { Select, SelectItem } from '../components/ui/Select';
 import { usePermissionContext } from '../context/PermissionContext';
 import { useDepartmentContext } from '../context/DepartmentContext';
 import { apiGet } from '../lib/apiClient';
@@ -241,38 +242,35 @@ const TeamManagement = () => {
             />
           </div>
 
-          <select
+          <Select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
-            className="rounded-xl bg-white/5 border border-white/10 text-white text-sm px-4 py-3 outline-none focus:border-[#10b981]/50 focus:ring-1 focus:ring-[#10b981]/30"
           >
-            <option value="">All Roles</option>
+            <SelectItem value="">All Roles</SelectItem>
             {roles.map((r) => (
-              <option key={r.id} value={r.key}>{r.name}</option>
+              <SelectItem key={r.id} value={r.key}>{r.name}</SelectItem>
             ))}
-          </select>
+          </Select>
 
-          <select
+          <Select
             value={departmentFilter}
             onChange={(e) => setDepartmentFilter(e.target.value)}
-            className="rounded-xl bg-white/5 border border-white/10 text-white text-sm px-4 py-3 outline-none focus:border-[#10b981]/50 focus:ring-1 focus:ring-[#10b981]/30"
           >
-            <option value="">All Departments</option>
+            <SelectItem value="">All Departments</SelectItem>
             {(departments || []).map((d) => (
-              <option key={d.id} value={d.id}>{d.name}</option>
+              <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
             ))}
-          </select>
+          </Select>
 
-          <select
+          <Select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-xl bg-white/5 border border-white/10 text-white text-sm px-4 py-3 outline-none focus:border-[#10b981]/50 focus:ring-1 focus:ring-[#10b981]/30"
           >
-            <option value="">All Statuses</option>
-            <option value="active">Active</option>
-            <option value="invited">Invited</option>
-            <option value="suspended">Suspended</option>
-          </select>
+            <SelectItem value="">All Statuses</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="invited">Invited</SelectItem>
+            <SelectItem value="suspended">Suspended</SelectItem>
+          </Select>
         </div>
       </Card>
 
@@ -369,18 +367,16 @@ const TeamManagement = () => {
             <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
               Role
             </label>
-            <select
+            <Select
               value={selectedRoleId}
               onChange={(e) => setSelectedRoleId(e.target.value)}
-              className="rounded-xl bg-white/5 border border-white/10 text-white text-sm px-4 py-3 outline-none focus:border-[#10b981]/50 focus:ring-1 focus:ring-[#10b981]/30"
-              autoFocus
               required
             >
-              <option value="" disabled>Select a role</option>
+              <SelectItem value="" disabled>Select a role</SelectItem>
               {roles.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
+                <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
               ))}
-            </select>
+            </Select>
           </div>
           <Button type="submit" className="w-full justify-center" loading={savingRole} disabled={savingRole}>
             Save Changes
@@ -395,17 +391,15 @@ const TeamManagement = () => {
             <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
               Department
             </label>
-            <select
+            <Select
               value={selectedDeptId}
               onChange={(e) => setSelectedDeptId(e.target.value)}
-              className="rounded-xl bg-white/5 border border-white/10 text-white text-sm px-4 py-3 outline-none focus:border-[#10b981]/50 focus:ring-1 focus:ring-[#10b981]/30"
-              autoFocus
             >
-              <option value="">Unassigned</option>
+              <SelectItem value="">Unassigned</SelectItem>
               {(departments || []).map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
+                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
               ))}
-            </select>
+            </Select>
           </div>
           <Button type="submit" className="w-full justify-center" loading={savingDept} disabled={savingDept}>
             Save Changes
@@ -439,33 +433,31 @@ const TeamManagement = () => {
             <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
               Role
             </label>
-            <select
+            <Select
               value={addRoleId}
               onChange={(e) => setAddRoleId(e.target.value)}
-              className="rounded-xl bg-white/5 border border-white/10 text-white text-sm px-4 py-3 outline-none focus:border-[#10b981]/50 focus:ring-1 focus:ring-[#10b981]/30"
               required
             >
-              <option value="" disabled>Select a role</option>
+              <SelectItem value="" disabled>Select a role</SelectItem>
               {roles.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
+                <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
               Department
             </label>
-            <select
+            <Select
               value={addDeptId}
               onChange={(e) => setAddDeptId(e.target.value)}
-              className="rounded-xl bg-white/5 border border-white/10 text-white text-sm px-4 py-3 outline-none focus:border-[#10b981]/50 focus:ring-1 focus:ring-[#10b981]/30"
             >
-              <option value="">Unassigned</option>
+              <SelectItem value="">Unassigned</SelectItem>
               {(departments || []).map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
+                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
               ))}
-            </select>
+            </Select>
           </div>
 
           <Button type="submit" className="w-full justify-center" loading={addingMember} disabled={addingMember}>

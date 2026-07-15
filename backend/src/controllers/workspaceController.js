@@ -3,6 +3,11 @@
  * ------------------------------------------------------------------
  * Table: workspaces
  * Columns: id, company_id, name, slug, status, created_at
+ *
+ * Phase 2.2.1: createWorkspace now seeds the default system category set
+ * (see categoryService.seedDefaultsForWorkspace) right after the new
+ * admin membership is created, so every workspace starts with its
+ * enterprise categories already in place — no manual step needed.
  */
 
 const asyncHandler = require("../utils/asyncHandler");
@@ -12,6 +17,7 @@ const workspaceRepository = require("../repositories/workspaceRepository");
 const companyRepository = require("../repositories/companyRepository");
 const membershipRepository = require("../repositories/membershipRepository");
 const roleRepository = require("../repositories/roleRepository");
+const categoryService = require("../services/categoryService");
 
 function slugify(name) {
   return name
@@ -67,6 +73,21 @@ const createWorkspace = asyncHandler(async (req, res) => {
     role_id: adminRole.id,
     status: "active",
   });
+
+  // Seed the default enterprise category set (Cloud Infrastructure,
+  // Payroll, Engineering, ...) so the workspace isn't empty on first use.
+  // Non-fatal: if seeding fails for some reason, the workspace itself is
+  // still created successfully — categories can always be added manually,
+  // and re-running the seed later is idempotent (see categoryService).
+  try {
+    await categoryService.seedDefaultsForWorkspace(workspace.id, req.user.id);
+  } catch (seedError) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[createWorkspace] Failed to seed default categories for workspace ${workspace.id}:`,
+      seedError.message
+    );
+  }
 
   return sendSuccess(res, {
     statusCode: 201,

@@ -30,6 +30,7 @@ import WorkspaceSwitcher from '../components/WorkspaceSwitcher';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
+import { Select, SelectItem } from '../components/ui/Select';
 import toast from 'react-hot-toast';
 import { getNotifications, markNotificationAsRead } from '../services/notificationService';
 import { addTransaction as addTransactionSvc } from '../services/transactionService';
@@ -530,46 +531,44 @@ export const DashboardLayout = ({ children }) => {
 
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Category</label>
-              <select
+              <Select
                 value={txCategory}
                 onChange={(e) => setTxCategory(e.target.value)}
-                className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-sm py-3 px-4 outline-none focus:border-[#10b981]/50 focus:ring-1 focus:ring-[#10b981]/30 transition-all duration-200"
               >
                 {txType === 'income' ? (
                   <>
-                    <option value="Salary" className="bg-[#111827]">Salary</option>
-                    <option value="Investment" className="bg-[#111827]">Investment</option>
-                    <option value="Freelance" className="bg-[#111827]">Freelance</option>
-                    <option value="Refund" className="bg-[#111827]">Refund</option>
+                    <SelectItem value="Salary">Salary</SelectItem>
+                    <SelectItem value="Investment">Investment</SelectItem>
+                    <SelectItem value="Freelance">Freelance</SelectItem>
+                    <SelectItem value="Refund">Refund</SelectItem>
                   </>
                 ) : (
                   <>
-                    <option value="Groceries" className="bg-[#111827]">Groceries</option>
-                    <option value="Software" className="bg-[#111827]">Software</option>
-                    <option value="Dining Out" className="bg-[#111827]">Dining Out</option>
-                    <option value="Shopping" className="bg-[#111827]">Shopping</option>
-                    <option value="Transport" className="bg-[#111827]">Transport</option>
-                    <option value="Travel" className="bg-[#111827]">Travel</option>
-                    <option value="Entertainment" className="bg-[#111827]">Entertainment</option>
+                    <SelectItem value="Groceries">Groceries</SelectItem>
+                    <SelectItem value="Software">Software</SelectItem>
+                    <SelectItem value="Dining Out">Dining Out</SelectItem>
+                    <SelectItem value="Shopping">Shopping</SelectItem>
+                    <SelectItem value="Transport">Transport</SelectItem>
+                    <SelectItem value="Travel">Travel</SelectItem>
+                    <SelectItem value="Entertainment">Entertainment</SelectItem>
                   </>
                 )}
-              </select>
+              </Select>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Payment Method</label>
-              <select
+              <Select
                 value={txMethod}
                 onChange={(e) => setTxMethod(e.target.value)}
-                className="w-full rounded-xl bg-white/5 border border-white/10 text-white text-sm py-3 px-4 outline-none focus:border-[#10b981]/50 transition-all duration-200"
               >
-                <option value="Credit Card" className="bg-[#111827]">Credit Card</option>
-                <option value="Bank Transfer" className="bg-[#111827]">Bank Transfer</option>
-                <option value="Apple Pay" className="bg-[#111827]">Apple Pay</option>
-                <option value="PayPal" className="bg-[#111827]">PayPal</option>
-              </select>
+                <SelectItem value="Credit Card">Credit Card</SelectItem>
+                <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                <SelectItem value="Apple Pay">Apple Pay</SelectItem>
+                <SelectItem value="PayPal">PayPal</SelectItem>
+              </Select>
             </div>
 
             <div>
