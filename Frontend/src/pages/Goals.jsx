@@ -1,3 +1,9 @@
+// ⚠️ DEPRECATED (Sprint 1): Per PRD §11.4 this is a personal-finance
+// leftover, out of scope for FinFlow Enterprise, pending product
+// confirmation. Left fully functional and wired on purpose — not
+// removed — per explicit instruction to isolate/label rather than
+// delete unless actively breaking the application. Do not build new
+// features on top of this page; flag before extending it further.
 import React, { useEffect, useState, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import {

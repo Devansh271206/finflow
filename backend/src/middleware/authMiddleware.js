@@ -19,7 +19,7 @@
  */
 
 const jwt = require("jsonwebtoken");
-const { supabaseAdmin } = require("../config/supabase");
+const { supabaseAdmin, SUPABASE_JWT_SECRET } = require("../config/supabase");
 const ApiError = require("../utils/ApiError");
 const asyncHandler = require("../utils/asyncHandler");
 
@@ -42,9 +42,9 @@ const protect = asyncHandler(async (req, res, next) => {
   let userId = null;
   let localPayload = null;
 
-  if (process.env.SUPABASE_JWT_SECRET) {
+  if (SUPABASE_JWT_SECRET) {
     try {
-      localPayload = jwt.verify(token, process.env.SUPABASE_JWT_SECRET, {
+      localPayload = jwt.verify(token, SUPABASE_JWT_SECRET, {
         algorithms: ["HS256"],
       });
       userId = localPayload.sub;

@@ -97,15 +97,25 @@ async function remove(id, workspaceId) {
  * budget has no category_id, e.g. a department-wide budget), and bounded
  * to each budget's period_start..period_end window. This replaces the
  * old attachSpendData() name-matching hack entirely.
+ *
+ * Sprint 4 fix (confirmed with product owner): only transactions with
+ * approval_status 'approved' or 'reimbursed' count toward spend, plus
+ * NULL (transactions predating the approval workflow / not routed
+ * through it at all — treated as exempt rather than silently zeroed
+ * out). Before this fix, a 'draft', 'submitted', 'under_review', or
+ * even 'rejected' expense inflated budget utilization identically to
+ * an approved one — which defeated the entire point of having an
+ * approval workflow. See migrations/009_expense_approval_workflow.sql.
  */
 async function computeSpendForBudgets(workspaceId, budgets) {
   if (!budgets.length) return new Map();
 
   const { data: transactions, error } = await supabaseAdmin
     .from("transactions")
-    .select("amount, type, category_id, department_id, transaction_date")
+    .select("amount, type, category_id, department_id, transaction_date, approval_status")
     .eq("workspace_id", workspaceId)
-    .neq("type", "income");
+    .neq("type", "income")
+    .or("approval_status.in.(approved,reimbursed),approval_status.is.null");
 
   if (error) throw error;
 

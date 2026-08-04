@@ -20,6 +20,9 @@ const budgetRepository = require("../repositories/budgetRepository");
 const categoryRepository = require("../repositories/categoryRepository");
 const departmentRepository = require("../repositories/departmentRepository");
 const ApiError = require("../utils/ApiError");
+const eventBusService = require("./eventBusService");
+const { EVENT_TYPES } = require("../events/eventTypes");
+const { resolveAdminHRUserIds } = require("./notificationRecipientHelpers");
 
 async function assertCategoryInWorkspace(categoryId, workspaceId) {
   if (!categoryId) return;
@@ -31,6 +34,56 @@ async function assertDepartmentInWorkspace(departmentId, workspaceId) {
   if (!departmentId) return;
   const department = await departmentRepository.findByIdInWorkspace(departmentId, workspaceId);
   if (!department) throw new ApiError(404, "Department not found");
+}
+
+/**
+ * Sprint 14: fires BUDGET_EXCEEDED exactly once per crossing, not on
+ * every subsequent read while a budget remains over-limit. Detected by
+ * comparing each budget's PREVIOUSLY PERSISTED amount_spent (the value
+ * already in `budgets`, fetched before this recompute) against the
+ * FRESHLY COMPUTED spend in `spendByBudgetId` — if the old value was
+ * at-or-under the limit and the new value is over it, that's the exact
+ * moment this read crossed the threshold. budgetRepository.persistSpend()
+ * (called right after this) then writes the new value, so the very
+ * next read's "old" value will already be over-limit and won't
+ * re-trigger. This only fires from read paths (getBudget/
+ * getBudgetsForWorkspace), not from a write — spend itself is computed
+ * lazily from transactions (see this file's own getBudgetsForWorkspace
+ * comment), so there is no single "the transaction that pushed it
+ * over" write to hook synchronously; the read-time crossing-detection
+ * here is the closest equivalent available without adding new schema
+ * this sprint didn't ask for.
+ */
+async function detectAndPublishBudgetExceeded(workspaceId, budgets, spendByBudgetId) {
+  const recipientUserIds = await resolveAdminHRUserIds(workspaceId).catch((err) => {
+    console.error("[budgetService] Failed to resolve recipients for BUDGET_EXCEEDED event:", err.message);
+    return [];
+  });
+  if (!recipientUserIds.length) return;
+
+  for (const budget of budgets) {
+    const limit = Number(budget.amount_limit ?? budget.monthly_limit ?? 0);
+    if (limit <= 0) continue;
+
+    const previouslySpent = Number(budget.amount_spent ?? 0);
+    const freshlySpent = Number(spendByBudgetId.get(budget.id) ?? previouslySpent);
+
+    const justCrossed = previouslySpent <= limit && freshlySpent > limit;
+    if (!justCrossed) continue;
+
+    eventBusService.publish(EVENT_TYPES.BUDGET_EXCEEDED, {
+      workspaceId,
+      actorUserId: null,
+      recipientUserIds,
+      module: "Budget",
+      resourceType: "budget",
+      resourceId: budget.id,
+      title: `Budget "${budget.categories?.name || budget.departments?.name || "Untitled"}" exceeded its limit`,
+      message: `Spent ${freshlySpent} of ${limit}`,
+      actionUrl: `/budgets?id=${budget.id}`,
+      metadata: { limit, spent: freshlySpent },
+    });
+  }
 }
 
 function enrichWithSpend(budget, spendByBudgetId) {
@@ -70,6 +123,12 @@ async function getBudgetsForWorkspace(workspaceId, filters = {}) {
   if (!budgets.length) return [];
 
   const spendByBudgetId = await budgetRepository.computeSpendForBudgets(workspaceId, budgets);
+
+  // Fire-and-forget, never awaited for correctness — see eventBusService.js.
+  detectAndPublishBudgetExceeded(workspaceId, budgets, spendByBudgetId).catch((err) =>
+    console.error("[budgetService] BUDGET_EXCEEDED detection failed:", err.message)
+  );
+
   await budgetRepository.persistSpend(spendByBudgetId);
 
   return budgets.map((b) => enrichWithSpend(b, spendByBudgetId));
@@ -80,6 +139,11 @@ async function getBudget(id, workspaceId) {
   if (!budget) throw new ApiError(404, "Budget not found");
 
   const spendByBudgetId = await budgetRepository.computeSpendForBudgets(workspaceId, [budget]);
+
+  detectAndPublishBudgetExceeded(workspaceId, [budget], spendByBudgetId).catch((err) =>
+    console.error("[budgetService] BUDGET_EXCEEDED detection failed:", err.message)
+  );
+
   await budgetRepository.persistSpend(spendByBudgetId);
 
   return enrichWithSpend(budget, spendByBudgetId);
@@ -151,6 +215,23 @@ async function updateBudget(id, workspaceId, payload) {
   }
 
   await budgetRepository.update(id, workspaceId, updatePayload);
+
+  resolveAdminHRUserIds(workspaceId)
+    .then((recipientUserIds) => {
+      eventBusService.publish(EVENT_TYPES.BUDGET_UPDATED, {
+        workspaceId,
+        actorUserId: null, // updateBudget has no userId param — same documented gap as employeeService.js
+        recipientUserIds,
+        module: "Budget",
+        resourceType: "budget",
+        resourceId: id,
+        title: "A budget was updated",
+        actionUrl: `/budgets?id=${id}`,
+        metadata: { changes: updatePayload },
+      });
+    })
+    .catch((err) => console.error("[budgetService] Failed to resolve recipients for BUDGET_UPDATED event:", err.message));
+
   return getBudget(id, workspaceId);
 }
 

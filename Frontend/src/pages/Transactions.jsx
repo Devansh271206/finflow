@@ -12,13 +12,16 @@ import {
   ChevronRight,
   Download,
   AlertTriangle,
-  UploadCloud
+  UploadCloud,
+  ShieldCheck
 } from 'lucide-react';
 import Modal from '../components/ui/Modal';
+import TransactionApprovalPanel from '../components/TransactionApprovalPanel';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Badge from '../components/ui/Badge';
 import EmptyState from '../components/ui/EmptyState';
+import Skeleton from '../components/ui/Skeleton';
 import { Select, SelectItem } from '../components/ui/Select';
 import {
   getTransactions,
@@ -65,6 +68,7 @@ export const Transactions = () => {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+  const [approvalTarget, setApprovalTarget] = useState(null);
 
   // Selected Transaction for operations
   const [selectedTx, setSelectedTx] = useState(null);
@@ -411,8 +415,15 @@ export const Transactions = () => {
 
       {/* Transactions Data Table */}
       <div className="bg-[#111827] border border-white/5 rounded-3xl overflow-hidden shadow-xl">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+        {loading ? (
+          <div className="p-6 space-y-4">
+            <Skeleton variant="rect" className="h-12 w-full" />
+            <Skeleton variant="rect" className="h-12 w-full" />
+            <Skeleton variant="rect" className="h-12 w-full" />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-white/5 bg-white/[0.01]">
                 <th className="p-4 pl-6 text-xs font-bold text-slate-500 uppercase tracking-wider">Merchant / Details</th>
@@ -470,6 +481,13 @@ export const Transactions = () => {
                           <FileText size={15} />
                         </button>
                         <button
+                          onClick={() => setApprovalTarget(tx)}
+                          className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                          title="Approval Workflow"
+                        >
+                          <ShieldCheck size={15} />
+                        </button>
+                        <button
                           onClick={() => handleEditClick(tx)}
                           className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
                           title="Edit Transaction"
@@ -501,8 +519,10 @@ export const Transactions = () => {
           </table>
         </div>
 
+        )}
+
         {/* Pagination Panel */}
-        {filteredTx.length > 0 && (
+        {!loading && filteredTx.length > 0 && (
           <div className="p-4 px-6 border-t border-white/5 bg-white/[0.01] flex items-center justify-between">
             <span className="text-xs text-slate-500">
               Showing <span className="font-bold text-white">{Math.min(filteredTx.length, (currentPage - 1) * itemsPerPage + 1)}</span> to{' '}
@@ -534,6 +554,21 @@ export const Transactions = () => {
           </div>
         )}
       </div>
+
+      {!loading && filteredTx.length === 0 && !errorMessage && (
+        <div className="p-6 border-t border-white/5">
+          <EmptyState
+            title="No transactions yet"
+            description="Add your first transaction to start tracking spend and approvals."
+            actionText="Create transaction"
+            onAction={() => {
+              resetForm();
+              setDate(new Date().toISOString().split('T')[0]);
+              setIsAddOpen(true);
+            }}
+          />
+        </div>
+      )}
 
       {/* 1. Modal: Add Transaction */}
       <Modal isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} title="Create New Transaction">
@@ -660,6 +695,18 @@ export const Transactions = () => {
       </Modal>
 
       {/* 2. Modal: Edit Transaction */}
+      <Modal isOpen={!!approvalTarget} onClose={() => setApprovalTarget(null)} title="Approval Workflow">
+        {approvalTarget && (
+          <TransactionApprovalPanel
+            transaction={approvalTarget}
+            onUpdated={(updated) => {
+              setApprovalTarget(updated || null);
+              loadTransactions();
+            }}
+          />
+        )}
+      </Modal>
+
       <Modal isOpen={isEditOpen} onClose={() => setIsEditOpen(false)} title="Modify Transaction">
         <form onSubmit={handleEditSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3 p-1 bg-white/5 rounded-xl">

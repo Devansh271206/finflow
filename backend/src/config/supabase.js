@@ -55,4 +55,9 @@ const supabaseAuthClient = createClient(
   }
 );
 
-module.exports = { supabaseAdmin, supabaseAuthClient };
+// JWT signing secret used only by authMiddleware.js for fast local token
+// verification. Optional (falls back to remote Supabase Auth verification
+// when unset), so it is not part of the fail-fast check above.
+const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET || null;
+
+module.exports = { supabaseAdmin, supabaseAuthClient, SUPABASE_JWT_SECRET };

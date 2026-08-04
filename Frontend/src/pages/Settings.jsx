@@ -20,6 +20,7 @@ import { getBudgets } from '../services/budgetService';
 import { getGoals, deleteGoal } from '../services/goalService';
 import { getBills, deleteBill } from '../services/billService';
 import { supabase } from '../lib/supabase';
+import NotificationPreferences from '../components/notifications/NotificationPreferences';
 
 export const Settings = () => {
   const { settings, setSettings } = useApp();
@@ -252,6 +253,13 @@ export const Settings = () => {
                 />
               </button>
             </div>
+          </Card>
+
+          {/* Sprint 14: Notification Preferences */}
+          <Card hover={false} className="space-y-1">
+            <h3 className="text-sm font-bold text-white border-b border-white/5 pb-3 mb-1">Notification Preferences</h3>
+            <p className="text-xs text-slate-500 pb-2">Choose which notifications you want to receive.</p>
+            <NotificationPreferences />
           </Card>
 
           {/* Backup database controls */}

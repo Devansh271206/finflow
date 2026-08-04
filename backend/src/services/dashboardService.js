@@ -5,10 +5,11 @@
  * FinFlow dashboard. Kept separate from the controller so the
  * calculations are unit-testable and reusable (e.g. by analyticsService).
  *
- * Phase F.7: workspace-scoped (was user_id-only — cross-tenant leak risk
- * pre-fix). Dual-scoped by both user_id and workspace_id, same pattern
- * as transactionRepository, so behavior is unchanged for any caller with
- * no resolved workspace.
+ * Sprint 1 cutover: workspace_id is now required, not optional — the old
+ * "dual-scoped, filter only if resolved" bridging mode (Phase F.7) has
+ * been removed, matching transactionRepository.js. Every function below
+ * requires workspaceId; the controller (dashboardController.js) must
+ * resolve and pass it, the same guard pattern budgetController.js uses.
  *
  * NOTE: This remains the existing personal-finance-style dashboard
  * (balance/income/expenses/health score). It is NOT the Executive/HR/
@@ -25,26 +26,26 @@ function monthKey(date) {
 }
 
 async function fetchAllTransactions(userId, workspaceId) {
-  let query = supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("transactions")
     .select(
       "id, amount, type, category, category_id, payment_method, transaction_date, merchant, title, notes, receipt_url, created_at"
     )
     .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
     .order("transaction_date", { ascending: false });
 
-  if (workspaceId) query = query.eq("workspace_id", workspaceId);
-
-  const { data, error } = await query;
   if (error) throw new ApiError(500, "Failed to fetch transactions for dashboard", error.message);
   return data || [];
 }
 
 async function fetchBudgetsWithSpend(userId, workspaceId, transactions) {
-  let query = supabaseAdmin.from("budgets").select("*").eq("user_id", userId);
-  if (workspaceId) query = query.eq("workspace_id", workspaceId);
+  const { data: budgets, error } = await supabaseAdmin
+    .from("budgets")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId);
 
-  const { data: budgets, error } = await query;
   if (error) throw new ApiError(500, "Failed to fetch budgets for dashboard", error.message);
 
   const spentByCategoryId = new Map();
@@ -93,8 +94,9 @@ function computeFinancialHealthScore({ income, expenses, budgets }) {
 /**
  * Builds the full dashboard payload: balance, income, expenses, cash flow,
  * recent transactions, monthly summary (last 6 months), budget utilization,
- * and an overall financial health score. Scoped to the resolved workspace
- * when one is present; falls back to user_id-only for legacy callers.
+ * and an overall financial health score. workspaceId is required — the
+ * caller (dashboardController.js) must reject the request before calling
+ * this if no workspace resolved.
  */
 async function getDashboardSummary(userId, workspaceId) {
   const transactions = await fetchAllTransactions(userId, workspaceId);

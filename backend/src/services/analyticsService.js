@@ -5,10 +5,13 @@
  * expense-by-category, income vs expense, monthly/weekly spending,
  * cash flow trend, and savings growth over time.
  *
- * Phase F.7: workspace-scoped (was user_id-only). getSavingsGrowth no
- * longer reads from `goals` — that table is marked for deprecation per
- * PRD §11.4, so this now always uses the cumulative-cash-flow fallback
- * the old code already had, rather than fixing dead-end logic.
+ * Sprint 1 cutover: workspace_id is now required, not optional, in
+ * fetchTransactions (the single scoping point every function below
+ * routes through) — matching transactionRepository.js/dashboardService.js.
+ * getSavingsGrowth no longer reads from `goals` — that table is marked
+ * for deprecation per PRD §11.4, so this now always uses the
+ * cumulative-cash-flow fallback the old code already had, rather than
+ * fixing dead-end logic.
  */
 
 const { supabaseAdmin } = require("../config/supabase");
@@ -29,14 +32,12 @@ function weekKey(date) {
 }
 
 async function fetchTransactions(userId, workspaceId) {
-  let query = supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("transactions")
     .select("amount, type, category, category_id, transaction_date, created_at")
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId);
 
-  if (workspaceId) query = query.eq("workspace_id", workspaceId);
-
-  const { data, error } = await query;
   if (error) throw new ApiError(500, "Failed to fetch transactions for analytics", error.message);
   return data || [];
 }

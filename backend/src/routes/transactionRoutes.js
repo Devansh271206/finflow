@@ -12,6 +12,11 @@ const {
   createTransaction,
   updateTransaction,
   deleteTransaction,
+  submitTransaction,
+  approveTransaction,
+  rejectTransaction,
+  reimburseTransaction,
+  getApprovalHistory,
 } = require("../controllers/transactionController");
 
 const router = express.Router();
@@ -20,11 +25,12 @@ const router = express.Router();
 router.use(protect);
 router.use(resolveWorkspace);
 
-// Phase F.2: RBAC now wired in for transactions. Started in log-only mode
-// (enforce: false) so denials are logged but not blocking — flip to
-// enforce: true (or drop the option entirely, since true is the default)
-// once you've watched the logs for a few days and confirmed no legitimate
-// user/role is being wrongly denied. See middleware/authorize.js header.
+// Sprint 1: RBAC flipped from log-only to enforcing. Phase F.2 had left
+// this in { enforce: false } (denials logged, not blocking) as a
+// deliberate rollout precaution — Categories/Departments already proved
+// the underlying permissionService/role_permissions mechanism works
+// correctly in enforcing mode, so this now matches that. A denied
+// permission returns 403 instead of just a console.warn.
 
 const TRANSACTION_TYPES = [
   "income",
@@ -35,12 +41,16 @@ const TRANSACTION_TYPES = [
   "transfer",
   "journal_entry",
 ];
-const APPROVAL_STATUSES = ["pending", "approved", "rejected"];
+// Sprint 4: widened to match transactionService.js's VALID_APPROVAL_STATUSES
+// — this was a separate, stale copy of the old 3-value enum that would
+// have rejected valid draft/submitted/under_review/reimbursed values on
+// direct create/update/filter requests otherwise.
+const APPROVAL_STATUSES = ["draft", "submitted", "under_review", "approved", "rejected", "reimbursed"];
 const PAYMENT_STATUSES = ["unpaid", "paid", "partially_paid"];
 
 router.get(
   "/",
-  authorize(PERMISSIONS.TRANSACTIONS_READ, { enforce: false }),
+  authorize(PERMISSIONS.TRANSACTIONS_READ),
   [
     query("type").optional().isIn(["income", "expense"]),
     query("category_id").optional().isUUID(),
@@ -58,7 +68,7 @@ router.get(
 
 router.get(
   "/:id",
-  authorize(PERMISSIONS.TRANSACTIONS_READ, { enforce: false }),
+  authorize(PERMISSIONS.TRANSACTIONS_READ),
   [param("id").notEmpty()],
   validateRequest,
   getTransactionById
@@ -66,7 +76,7 @@ router.get(
 
 router.post(
   "/",
-  authorize(PERMISSIONS.TRANSACTIONS_CREATE, { enforce: false }),
+  authorize(PERMISSIONS.TRANSACTIONS_CREATE),
   upload.single("receipt"),
   [
     body("amount").isFloat({ gt: 0 }).withMessage("Amount must be a positive number"),
@@ -88,7 +98,7 @@ router.post(
 
 router.put(
   "/:id",
-  authorize(PERMISSIONS.TRANSACTIONS_EDIT, { enforce: false }),
+  authorize(PERMISSIONS.TRANSACTIONS_EDIT),
   upload.single("receipt"),
   [
     param("id").notEmpty(),
@@ -111,10 +121,60 @@ router.put(
 
 router.delete(
   "/:id",
-  authorize(PERMISSIONS.TRANSACTIONS_DELETE, { enforce: false }),
+  authorize(PERMISSIONS.TRANSACTIONS_DELETE),
   [param("id").notEmpty()],
   validateRequest,
   deleteTransaction
+);
+
+// Sprint 4 — Expense Approval Workflow. authorize() here only confirms
+// the caller has approval rights of SOME kind; approvalService.js is
+// what actually checks WHICH step a role/department may act on (see
+// its header comment). PERMISSIONS.APPROVALS_SUBMIT/APPROVALS_ACT were
+// already registered in permissionRegistry.js before this sprint —
+// defined but unused until now.
+
+router.post(
+  "/:id/submit",
+  authorize(PERMISSIONS.APPROVALS_SUBMIT),
+  [param("id").isUUID()],
+  validateRequest,
+  submitTransaction
+);
+
+router.post(
+  "/:id/approve",
+  authorize(PERMISSIONS.APPROVALS_ACT),
+  [param("id").isUUID(), body("notes").optional().isString()],
+  validateRequest,
+  approveTransaction
+);
+
+router.post(
+  "/:id/reject",
+  authorize(PERMISSIONS.APPROVALS_ACT),
+  [
+    param("id").isUUID(),
+    body("notes").notEmpty().withMessage("A reason is required when rejecting a transaction"),
+  ],
+  validateRequest,
+  rejectTransaction
+);
+
+router.post(
+  "/:id/reimburse",
+  authorize(PERMISSIONS.APPROVALS_ACT),
+  [param("id").isUUID()],
+  validateRequest,
+  reimburseTransaction
+);
+
+router.get(
+  "/:id/approvals",
+  authorize(PERMISSIONS.TRANSACTIONS_READ),
+  [param("id").isUUID()],
+  validateRequest,
+  getApprovalHistory
 );
 
 module.exports = router;

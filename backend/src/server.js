@@ -1,29 +1,24 @@
-require("dotenv").config();
+const env = require("./config/env");
+const logger = require("./utils/logger");
 const app = require("./app");
 
-const PORT = process.env.PORT || 5000;
-
-const server = app.listen(PORT, () => {
-  // eslint-disable-next-line no-console
-  console.log(`🚀 FinFlow API running in ${process.env.NODE_ENV || "development"} mode on port ${PORT}`);
+const server = app.listen(env.PORT, () => {
+  logger.info(`🚀 FinFlow API running in ${env.NODE_ENV} mode on port ${env.PORT}`);
 });
 
 // Graceful shutdown & safety nets for unexpected errors
 process.on("unhandledRejection", (err) => {
-  // eslint-disable-next-line no-console
-  console.error("Unhandled Rejection:", err);
+  logger.error("Unhandled Rejection:", err);
   server.close(() => process.exit(1));
 });
 
 process.on("uncaughtException", (err) => {
-  // eslint-disable-next-line no-console
-  console.error("Uncaught Exception:", err);
+  logger.error("Uncaught Exception:", err);
   process.exit(1);
 });
 
 process.on("SIGTERM", () => {
-  // eslint-disable-next-line no-console
-  console.log("SIGTERM received. Shutting down gracefully...");
+  logger.info("SIGTERM received. Shutting down gracefully...");
   server.close(() => process.exit(0));
 });
 

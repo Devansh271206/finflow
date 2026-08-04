@@ -8,8 +8,6 @@ import {
   PieChart,
   BarChart3,
   Target,
-  Sparkles,
-  MessageSquare,
   FileText,
   Settings as SettingsIcon,
   User,
@@ -19,11 +17,17 @@ import {
   Menu,
   X,
   Search,
-  Bell,
+  CalendarRange,
+  Activity as ActivityIcon,
   Plus,
   TrendingUp,
   Building2,
-  Users
+  Users,
+  Contact,
+  Truck,
+  Wallet,
+  CalendarDays,
+  IdCard
 } from 'lucide-react';
 import { usePermissionContext } from '../context/PermissionContext';
 import WorkspaceSwitcher from '../components/WorkspaceSwitcher';
@@ -32,7 +36,7 @@ import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import { Select, SelectItem } from '../components/ui/Select';
 import toast from 'react-hot-toast';
-import { getNotifications, markNotificationAsRead } from '../services/notificationService';
+import NotificationBell from '../components/notifications/NotificationBell';
 import { addTransaction as addTransactionSvc } from '../services/transactionService';
 
 export const DashboardLayout = ({ children }) => {
@@ -44,7 +48,7 @@ export const DashboardLayout = ({ children }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // Dropdowns and Modals
-  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  // Sprint 14: isNotificationOpen removed — NotificationBell.jsx manages its own open/close state.
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isAddTxOpen, setIsAddTxOpen] = useState(false);
 
@@ -62,41 +66,46 @@ export const DashboardLayout = ({ children }) => {
 
   const navItems = [
     { name: 'Overview', path: '/dashboard', icon: LayoutDashboard },
+    { name: 'My Portal', path: '/portal', icon: IdCard },
     { name: 'Transactions', path: '/transactions', icon: ArrowLeftRight },
     { name: 'Budgets', path: '/budgets', icon: PieChart },
     { name: 'Analytics', path: '/analytics', icon: BarChart3 },
-    { name: 'Goals', path: '/goals', icon: Target },
+    { name: 'Goals (Legacy)', path: '/goals', icon: Target },
     ...(can && can('departments.read')
       ? [{ name: 'Departments', path: '/departments', icon: Building2 }]
       : []),
     ...(can && can('team.manage')
       ? [{ name: 'Team', path: '/team', icon: Users }]
       : []),
-    { name: 'AI Insights', path: '/insights', icon: Sparkles },
-    { name: 'AI Assistant', path: '/assistant', icon: MessageSquare },
+    ...(can && can('employees.read')
+      ? [{ name: 'Employees', path: '/employees', icon: Contact }]
+      : []),
+    ...(can && can('vendors.read')
+      ? [{ name: 'Vendors', path: '/vendors', icon: Truck }]
+      : []),
+    ...(can && (can('payroll.read_aggregate') || can('payroll.manage'))
+      ? [{ name: 'Payroll', path: '/payroll', icon: Wallet }]
+      : []),
+    ...(can && (can('leave.read') || can('leave.manage'))
+      ? [{ name: 'Leave Requests', path: '/leave-requests', icon: CalendarDays }]
+      : []),
+    ...(can && can('leave.approve')
+      ? [{ name: 'Leave Approvals', path: '/leave-approvals', icon: CalendarDays }]
+      : []),
+    ...(can && can('holidays.read')
+      ? [{ name: 'Calendar', path: '/calendar', icon: CalendarRange }]
+      : []),
+    ...(can && can('activity.read')
+      ? [{ name: 'Activity', path: '/activity', icon: ActivityIcon }]
+      : []),
     { name: 'Reports', path: '/reports', icon: FileText },
     { name: 'Profile', path: '/profile', icon: User },
     { name: 'Settings', path: '/settings', icon: SettingsIcon },
   ];
 
-  const [notifications, setNotifications] = useState([]);
-
-  const loadNotifications = useCallback(async () => {
-    const { data } = await getNotifications();
-    setNotifications(data || []);
-  }, []);
-
-  useEffect(() => {
-    loadNotifications();
-  }, [loadNotifications]);
-
-  const handleMarkAllRead = useCallback(async () => {
-    const unread = notifications.filter(n => !n.is_read);
-    await Promise.all(unread.map(n => markNotificationAsRead(n.id)));
-    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-  }, [notifications]);
-
-  const unreadCount = notifications.filter(n => !n.is_read).length;
+  // Sprint 14: notification state (notifications/unreadCount/
+  // loadNotifications/handleMarkAllRead) removed — now owned entirely
+  // by <NotificationBell /> (see components/notifications/NotificationBell.jsx).
 
   const handleQuickAddSubmit = async (e) => {
     e.preventDefault();
@@ -354,79 +363,16 @@ export const DashboardLayout = ({ children }) => {
               <span className="hidden sm:inline">Transaction</span>
             </Button>
 
-            {/* AI Assistant Quick Link */}
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => navigate('/assistant')}
-              className="h-9 w-9 p-0 flex items-center justify-center rounded-lg"
-              title="AI Assistant"
-            >
-              <MessageSquare size={16} />
-            </Button>
-
-            {/* Notifications Dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => {
-                  setIsNotificationOpen(!isNotificationOpen);
-                  setIsProfileOpen(false);
-                }}
-                className={`relative h-9 w-9 rounded-lg flex items-center justify-center border border-white/15 bg-white/5 hover:bg-white/10 transition-colors text-slate-300 hover:text-white ${isNotificationOpen ? 'bg-white/10 border-emerald-500/30 text-white' : ''}`}
-              >
-                <Bell size={16} />
-                {unreadCount > 0 && (
-                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]" />
-                )}
-              </button>
-
-              <AnimatePresence>
-                {isNotificationOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="absolute right-0 mt-3 w-80 rounded-2xl bg-[#111827] border border-white/10 shadow-2xl p-4 z-50 text-left"
-                  >
-                    <div className="flex items-center justify-between mb-3 pb-2 border-b border-white/5">
-                      <span className="text-sm font-bold text-white">Notifications</span>
-                      {unreadCount > 0 && (
-                        <button
-                          onClick={handleMarkAllRead}
-                          className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold"
-                        >
-                          Mark all read
-                        </button>
-                      )}
-                    </div>
-                    <div className="space-y-3">
-                      {notifications.length === 0 ? (
-                        <p className="text-xs text-slate-500 text-center py-4">No notifications</p>
-                      ) : notifications.slice(0, 5).map(n => (
-                        <div key={n.id} className={`p-2.5 rounded-xl hover:bg-white/5 transition-colors cursor-pointer ${!n.is_read ? 'bg-white/[0.02]' : ''}`}>
-                          <div className="flex items-center justify-between mb-0.5">
-                            <h4 className={`text-xs font-semibold ${!n.is_read ? 'text-white' : 'text-slate-300'}`}>
-                              {n.title || n.message}
-                            </h4>
-                            <span className="text-[10px] text-slate-500">
-                              {n.created_at ? new Date(n.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) : ''}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-400">{n.description || n.body || n.message}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+            {/* Notifications — Sprint 14: extracted to a standalone,
+                self-contained component (see components/notifications/NotificationBell.jsx).
+                Replaces this file's previous inline bell/dropdown/state. */}
+            <NotificationBell />
 
             {/* Profile Dropdown */}
             <div className="relative">
               <button
                 onClick={() => {
                   setIsProfileOpen(!isProfileOpen);
-                  setIsNotificationOpen(false);
                 }}
                 className="flex items-center gap-2 border border-white/10 rounded-full p-1 pl-1 pr-3 hover:bg-white/5 transition-colors"
               >

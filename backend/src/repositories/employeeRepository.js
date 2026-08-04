@@ -10,9 +10,11 @@
  * Columns: id, workspace_id, user_id, employee_code, full_name,
  *          designation, department_id, reporting_manager_id,
  *          employment_status ('active'|'on_leave'|'terminated'),
- *          date_of_joining, date_of_exit, created_at, email,
- *          employment_type ('full_time'|'part_time'|'contract'|'intern'),
- *          is_active, deleted_at
+ *          date_of_joining, date_of_exit, created_at, updated_at,
+ *          email, employment_type ('full_time'|'part_time'|'contract'|
+ *          'intern'), is_active, deleted_at, phone, address,
+ *          emergency_contact_name, emergency_contact_phone, notes
+ *          [Sprint 7 — 011_employee_contact_fields.sql]
  *
  * is_active/deleted_at (soft-delete/restore) are intentionally
  * independent of employment_status — a terminated employee can still
@@ -29,6 +31,12 @@
  * employee profile fields, so no salary.view permission check is needed
  * at this layer (defense-in-depth: even if a caller forgot the
  * permission check, this repository has nothing sensitive to leak).
+ *
+ * phone/address/emergency_contact_name/emergency_contact_phone/notes
+ * (Sprint 7) are ordinary profile fields, not sensitive like salary —
+ * no extra permission gating added here beyond the existing
+ * EMPLOYEES_READ/EMPLOYEES_MANAGE checks already enforced at the route
+ * layer.
  */
 
 const { supabaseAdmin } = require("../config/supabase");
@@ -36,8 +44,9 @@ const { supabaseAdmin } = require("../config/supabase");
 const SELECT_COLUMNS = `
   id, workspace_id, user_id, employee_code, full_name, designation,
   department_id, reporting_manager_id, employment_status,
-  date_of_joining, date_of_exit, created_at, email, employment_type,
-  is_active, deleted_at,
+  date_of_joining, date_of_exit, created_at, updated_at, email,
+  employment_type, is_active, deleted_at, phone, address,
+  emergency_contact_name, emergency_contact_phone, notes,
   departments:department_id ( id, name ),
   manager:reporting_manager_id ( id, full_name, designation )
 `;
@@ -50,6 +59,7 @@ const SORTABLE_COLUMNS = new Set([
   "designation",
   "date_of_joining",
   "created_at",
+  "updated_at",
 ]);
 
 /**
@@ -190,6 +200,27 @@ async function findByEmailInWorkspace(workspaceId, email, excludeId = null) {
 }
 
 /**
+ * Resolve the employees row that corresponds to a Supabase auth user
+ * within a workspace (employees.user_id === the auth user's id).
+ * Needed anywhere a caller has req.user.id (an auth.users id) but must
+ * write to a column that is a foreign key to employees(id) — e.g.
+ * leave_requests.decided_by / leave_events.created_by (migration 014).
+ * Returns null if this auth user has no employee record in the
+ * workspace yet (caller should fall back to leaving the FK null rather
+ * than writing the raw auth id into it).
+ */
+async function findByUserIdInWorkspace(userId, workspaceId) {
+  const { data, error } = await supabaseAdmin
+    .from("employees")
+    .select(SELECT_COLUMNS)
+    .eq("workspace_id", workspaceId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/**
  * All direct reports of a given employee (for org-chart / reporting
  * validation — e.g. preventing a manager from being set to their own
  * report, which would create a cycle).
@@ -217,9 +248,10 @@ async function create(payload) {
 /**
  * Partial update — full_name, designation, department_id,
  * reporting_manager_id, employment_status, date_of_exit, email,
- * employment_type, is_active, deleted_at. Never accepts workspace_id
- * in payload; callers must not allow an employee to be reassigned
- * across workspaces.
+ * employment_type, is_active, deleted_at, phone, address,
+ * emergency_contact_name, emergency_contact_phone, notes [Sprint 7].
+ * Never accepts workspace_id in payload; callers must not allow an
+ * employee to be reassigned across workspaces.
  */
 async function update(id, payload) {
   const { data, error } = await supabaseAdmin
@@ -238,6 +270,7 @@ module.exports = {
   findByIdInWorkspace,
   findByCodeInWorkspace,
   findByEmailInWorkspace,
+  findByUserIdInWorkspace,
   findDirectReports,
   create,
   update,

@@ -1,6 +1,13 @@
 /**
  * Goal Controller
  * ------------------------------------------------------------------
+ * ⚠️ DEPRECATED (Sprint 1): Per PRD §11.4 this is a personal-finance
+ * leftover, out of scope for FinFlow Enterprise, pending product
+ * confirmation. Left fully functional and wired on purpose — not
+ * removed — per explicit instruction to isolate/label rather than
+ * delete unless actively breaking the application. Do not build new
+ * features on top of this module; flag before extending it further.
+ * ------------------------------------------------------------------
  * Table: goals
  * Columns: id, user_id, title, target_amount, saved_amount, deadline,
  *          status, category, milestones, created_at, updated_at

@@ -8,13 +8,14 @@
 const { supabaseAdmin } = require("../config/supabase");
 
 const SELECT_COLUMNS =
-  "id, name, slug, logo, industry, currency, timezone, country, owner_user_id, created_at, updated_at";
+  "id, name, slug, logo, industry, currency, timezone, country, owner_user_id, status, created_at, updated_at";
 
 async function findById(id) {
   const { data, error } = await supabaseAdmin
     .from("companies")
     .select(SELECT_COLUMNS)
     .eq("id", id)
+    .is("deleted_at", null)
     .maybeSingle();
   if (error) throw error;
   return data;
@@ -25,6 +26,7 @@ async function findBySlug(slug) {
     .from("companies")
     .select(SELECT_COLUMNS)
     .eq("slug", slug)
+    .is("deleted_at", null)
     .maybeSingle();
   if (error) throw error;
   return data;
@@ -35,6 +37,7 @@ async function findByOwner(ownerUserId) {
     .from("companies")
     .select(SELECT_COLUMNS)
     .eq("owner_user_id", ownerUserId)
+    .is("deleted_at", null)
     .order("created_at", { ascending: true });
   if (error) throw error;
   return data;
@@ -55,6 +58,7 @@ async function update(id, payload) {
     .from("companies")
     .update({ ...payload, updated_at: new Date().toISOString() })
     .eq("id", id)
+    .is("deleted_at", null)
     .select(SELECT_COLUMNS)
     .maybeSingle();
   if (error) throw error;

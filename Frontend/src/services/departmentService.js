@@ -4,9 +4,14 @@ import { apiGet, apiPost, apiPatch } from "../lib/apiClient";
  * List departments in the active workspace (X-Workspace-Id header is
  * attached automatically by apiClient — see WorkspaceContext). Returns
  * both active and inactive departments; callers filter/badge as needed.
+ *
+ * Sprint 8: accepts optional { search, status, sort_by, sort_order,
+ * page, page_size } — omit page/page_size to get the full unpaginated
+ * array (unchanged contract for existing callers like
+ * DepartmentContext.jsx, which calls listDepartments() with no args).
  */
-export async function listDepartments() {
-  return apiGet("/departments");
+export async function listDepartments(params = {}) {
+  return apiGet("/departments", params);
 }
 
 export async function getDepartment(id) {
@@ -32,4 +37,11 @@ export async function deactivateDepartment(id) {
 
 export async function reactivateDepartment(id) {
   return apiPatch(`/departments/${id}`, { is_active: true });
+}
+
+/**
+ * Assign the Department Head. Pass employeeId = null to clear it.
+ */
+export async function assignDepartmentHead(id, employeeId) {
+  return apiPatch(`/departments/${id}/head`, { employee_id: employeeId });
 }

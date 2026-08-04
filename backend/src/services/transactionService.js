@@ -31,11 +31,37 @@ const VALID_TRANSACTION_TYPES = [
   "transfer",
   "journal_entry",
 ];
-const VALID_APPROVAL_STATUSES = ["pending", "approved", "rejected"];
+// Sprint 4: widened from the original 3-value set (pending/approved/
+// rejected) to the PRD §15.5 state machine, confirmed with product
+// owner before this change — see migrations/
+// 009_expense_approval_workflow.sql for the full rationale and the
+// backfill this required.
+const VALID_APPROVAL_STATUSES = [
+  "draft",
+  "submitted",
+  "under_review",
+  "approved",
+  "rejected",
+  "reimbursed",
+];
 const VALID_PAYMENT_STATUSES = ["unpaid", "paid", "partially_paid"];
 
 async function assertVendorInWorkspace(vendorId, workspaceId) {
   if (!vendorId) return;
+
+  // Vendor Management (Sprint 3) has not shipped yet — vendorRepository.js
+  // is currently an empty stub file with no exports, even though
+  // vendorController.js is written against it. Without this guard, any
+  // transaction submitted with a vendor_id would throw an unhandled
+  // "vendorRepository.findByIdInWorkspace is not a function" TypeError.
+  // Fail clearly instead until that repository is actually implemented.
+  if (typeof vendorRepository.findByIdInWorkspace !== "function") {
+    throw new ApiError(
+      501,
+      "Vendor management is not yet available — transactions cannot reference a vendor_id until it ships."
+    );
+  }
+
   const vendor = await vendorRepository.findByIdInWorkspace(vendorId, workspaceId);
   if (!vendor) throw new ApiError(404, "Vendor not found");
 }
@@ -105,31 +131,19 @@ async function validateEnterpriseFields(workspaceId, fields = {}) {
   ]);
 }
 
-/**
- * Validates an approval-status transition. Only 'pending' -> 'approved'
- * or 'pending' -> 'rejected' is allowed through the approve/reject
- * endpoints — once a transaction has been decided, re-deciding it
- * requires an explicit edit (PUT), not another approval action, so a
- * decision can't be silently overwritten by a second approver.
- * A transaction with no approval_status set (approval not requested/
- * applicable) cannot be approved or rejected either — approval only
- * applies to transactions that were explicitly submitted for it.
- */
-function assertApprovableTransition(transaction, nextStatus) {
-  if (transaction.approval_status !== "pending") {
-    throw new ApiError(
-      409,
-      `Transaction is not pending approval (current status: ${transaction.approval_status ?? "none"})`
-    );
-  }
-  if (!["approved", "rejected"].includes(nextStatus)) {
-    throw new ApiError(400, `Invalid approval transition to "${nextStatus}"`);
-  }
-}
+// The single-step assertApprovableTransition() that used to live here
+// (pending -> approved/rejected only) has been removed — it assumed
+// the old 3-value enum and had no notion of the two-step Dept Lead ->
+// Finance escalation the widened state machine above requires. That
+// logic now lives in approvalService.js's assertTransition(), which is
+// aware of both steps and of who is allowed to perform each one. This
+// file still owns validation of the enum values themselves
+// (assertValidEnumFields above) for direct PUT edits — just not the
+// submit/approve/reject/reimburse workflow transitions, which are a
+// distinct concern with their own actor/role checks.
 
 module.exports = {
   validateEnterpriseFields,
-  assertApprovableTransition,
   assertCategoryInWorkspace,
   VALID_TRANSACTION_TYPES,
   VALID_APPROVAL_STATUSES,

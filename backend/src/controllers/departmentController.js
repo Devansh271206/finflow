@@ -2,34 +2,61 @@
  * Department Controller
  * ------------------------------------------------------------------
  * Table: departments
- * Columns: id, workspace_id, name, is_active, created_at
+ * Columns: id, workspace_id, name, is_active, department_head_employee_id,
+ *          created_at
  *
  * Route protection (see departmentRoutes.js):
  *   authenticate -> resolveWorkspace -> authorize(PERMISSIONS.DEPARTMENTS_*)
  *
  * PRD §5.2 / §4 RBAC matrix:
  *   - Read (own department + list): Admin, Finance/Ops, Dept Lead, Employee
- *   - Create/Edit/Deactivate: Admin, Finance/Ops only
+ *   - Create/Edit/Deactivate/Assign Head: Admin, Finance/Ops only
  *   - Never hard-delete a department with transaction history — only
  *     soft-delete via is_active. No deleteDepartment/DELETE route exists.
+ *
+ * Sprint 8: now routes through departmentService.js (routes -> controllers
+ * -> services -> repositories, PRD §14) instead of calling
+ * departmentRepository.js directly, same layering as employeeController.js.
+ * getDepartments also now reads search/sort_by/sort_order/page/page_size
+ * from the querystring, same convention as employeeController.js's
+ * getEmployees, and adds assignDepartmentHead.
  */
 
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess } = require("../utils/apiResponse");
 const ApiError = require("../utils/ApiError");
-const departmentRepository = require("../repositories/departmentRepository");
+const departmentService = require("../services/departmentService");
 
 // @desc    List all departments in the resolved workspace (active + inactive;
 //          frontend distinguishes via is_active badge)
-// @route   GET /api/departments
+// @route   GET /api/departments?search=&status=&sort_by=&sort_order=&page=&page_size=
 // @access  Member (departments.read)
 const getDepartments = asyncHandler(async (req, res) => {
   if (!req.workspace) {
     throw new ApiError(400, "No active workspace resolved for this request");
   }
 
-  const departments = await departmentRepository.listByWorkspace(req.workspace.id);
-  return sendSuccess(res, { message: "Departments fetched", data: departments });
+  const { search, status, sort_by, sort_order, page, page_size } = req.query;
+
+  const result = await departmentService.listDepartments(req.workspace.id, {
+    search,
+    status,
+    sortBy: sort_by,
+    sortOrder: sort_order,
+    page,
+    limit: page_size,
+  });
+
+  // No pagination requested -> result is a plain array (unchanged
+  // contract, same as before Sprint 8). Pagination requested -> shape
+  // it the same way employeeController.js's getEmployees does
+  // ({ items, total, page, pageSize }) so the frontend can reuse the
+  // same pagination component/pattern.
+  const data = Array.isArray(result)
+    ? result
+    : { items: result.data, total: result.total, page: result.page, pageSize: result.limit };
+
+  return sendSuccess(res, { message: "Departments fetched", data });
 });
 
 // @desc    Get a single department (must belong to the resolved workspace)
@@ -40,12 +67,7 @@ const getDepartmentById = asyncHandler(async (req, res) => {
     throw new ApiError(400, "No active workspace resolved for this request");
   }
 
-  const department = await departmentRepository.findByIdInWorkspace(
-    req.params.id,
-    req.workspace.id
-  );
-  if (!department) throw new ApiError(404, "Department not found");
-
+  const department = await departmentService.getDepartment(req.params.id, req.workspace.id);
   return sendSuccess(res, { message: "Department fetched", data: department });
 });
 
@@ -57,25 +79,11 @@ const createDepartment = asyncHandler(async (req, res) => {
     throw new ApiError(400, "No active workspace resolved for this request");
   }
 
-  const { name } = req.body;
-  const trimmedName = (name || "").trim();
-  if (!trimmedName) {
-    throw new ApiError(400, "Department name is required");
-  }
-
-  const existing = await departmentRepository.findByNameInWorkspace(
+  const department = await departmentService.createDepartment(
     req.workspace.id,
-    trimmedName
+    { name: req.body.name },
+    req.user?.id
   );
-  if (existing) {
-    throw new ApiError(409, "A department with this name already exists");
-  }
-
-  const department = await departmentRepository.create({
-    workspace_id: req.workspace.id,
-    name: trimmedName,
-    is_active: true,
-  });
 
   return sendSuccess(res, {
     statusCode: 201,
@@ -93,42 +101,32 @@ const updateDepartment = asyncHandler(async (req, res) => {
     throw new ApiError(400, "No active workspace resolved for this request");
   }
 
-  const existing = await departmentRepository.findByIdInWorkspace(
+  const updated = await departmentService.updateDepartment(
     req.params.id,
-    req.workspace.id
+    req.workspace.id,
+    { name: req.body.name, is_active: req.body.is_active },
+    req.user?.id
   );
-  if (!existing) throw new ApiError(404, "Department not found");
 
-  const { name, is_active } = req.body;
-  const payload = {};
-
-  if (name !== undefined) {
-    const trimmedName = String(name).trim();
-    if (!trimmedName) {
-      throw new ApiError(400, "Department name cannot be empty");
-    }
-    if (trimmedName.toLowerCase() !== existing.name.toLowerCase()) {
-      const duplicate = await departmentRepository.findByNameInWorkspace(
-        req.workspace.id,
-        trimmedName
-      );
-      if (duplicate) {
-        throw new ApiError(409, "A department with this name already exists");
-      }
-    }
-    payload.name = trimmedName;
-  }
-
-  if (is_active !== undefined) {
-    payload.is_active = Boolean(is_active);
-  }
-
-  if (Object.keys(payload).length === 0) {
-    throw new ApiError(400, "No valid fields to update");
-  }
-
-  const updated = await departmentRepository.update(req.params.id, payload);
   return sendSuccess(res, { message: "Department updated", data: updated });
+});
+
+// @desc    Assign (or clear, with employee_id: null) the Department Head
+// @route   PATCH /api/departments/:id/head
+// @access  Admin / Finance-Ops (departments.manage)
+const assignDepartmentHead = asyncHandler(async (req, res) => {
+  if (!req.workspace) {
+    throw new ApiError(400, "No active workspace resolved for this request");
+  }
+
+  const updated = await departmentService.assignHead(
+    req.params.id,
+    req.workspace.id,
+    req.body.employee_id,
+    req.user?.id
+  );
+
+  return sendSuccess(res, { message: "Department head updated", data: updated });
 });
 
 module.exports = {
@@ -136,4 +134,5 @@ module.exports = {
   getDepartmentById,
   createDepartment,
   updateDepartment,
+  assignDepartmentHead,
 };

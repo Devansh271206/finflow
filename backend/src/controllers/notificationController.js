@@ -1,138 +1,143 @@
 /**
  * Notification Controller
  * ------------------------------------------------------------------
- * Table: notifications
- * Columns: id, user_id, title, message, type, is_read, created_at
+ * Sprint 14 rewrite. Previously talked to Supabase directly (no
+ * repository/service layer — the one module in this codebase that
+ * didn't follow its own Repository/Service pattern). Now backed by
+ * notificationService.js / notificationRepository.js, matching every
+ * other module.
+ *
+ * BACKWARD COMPATIBILITY: the existing frontend (notificationService.js,
+ * DashboardLayout.jsx, NotificationsTab.jsx — none updated yet in this
+ * sprint's file order) calls:
+ *   GET  /api/notifications
+ *   PUT  /api/notifications/:id        body: { isRead }
+ *   PUT  /api/notifications/read-all
+ * All three verbs/paths are preserved exactly (see notificationRoutes.js,
+ * next file) so nothing breaks before the frontend files catch up
+ * later in this sprint's order. GET /api/notifications now ALSO
+ * accepts ?page&limit&search&type&is_read for the new Notification
+ * Center page — omitting them preserves the old "all notifications,
+ * unpaginated" behavior's default shape closely enough that existing
+ * callers (which just read the array) keep working, since
+ * notificationRepository.listForUser()'s default limit (20) is larger
+ * than any existing UI ever rendered anyway (dropdown slices to 5,
+ * portal tab had no pagination to begin with).
+ *
+ * POST /api/notifications is repurposed from "create a notification
+ * for myself" (dead code — nothing ever called it that way) into the
+ * Organization Announcement broadcast endpoint, gated by
+ * notifications.manage — this is the one notification type an admin
+ * creates directly rather than the system generating it from a module
+ * event, per the sprint brief's own list.
  */
 
-const { supabaseAdmin } = require("../config/supabase");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess } = require("../utils/apiResponse");
 const ApiError = require("../utils/ApiError");
-const { applyWorkspaceScope, workspaceIdForInsert } = require("../utils/workspaceScope");
+const notificationService = require("../services/notificationService");
+const membershipRepository = require("../repositories/membershipRepository");
+const eventBusService = require("../services/eventBusService");
+const { EVENT_TYPES } = require("../events/eventTypes");
 
-// @desc    Get all notifications for the authenticated user
-// @route   GET /api/notifications
-// @access  Private
+function requireWorkspace(req) {
+  if (!req.workspace) {
+    throw new ApiError(400, "No active workspace resolved for this request");
+  }
+}
+
+// @desc    List the authenticated user's notifications (paginated,
+//          searchable, filterable).
+// @route   GET /api/notifications?page=&limit=&search=&type=&is_read=
+// @access  Private (own notifications only)
 const getNotifications = asyncHandler(async (req, res) => {
-  const userId = req.user.id;
+  requireWorkspace(req);
 
-  let query = supabaseAdmin
-    .from("notifications")
-    .select("*")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
+  const result = await notificationService.listNotifications(req.user.id, req.workspace.id, req.query);
 
-  query = applyWorkspaceScope(query, req);
-
-  const { data, error } = await query;
-
-  if (error) throw new ApiError(500, "Failed to fetch notifications", error.message);
-
-  return sendSuccess(res, { message: "Notifications fetched successfully", data: data || [] });
+  return sendSuccess(res, { message: "Notifications fetched successfully", data: result.data, meta: { total: result.total } });
 });
 
-// @desc    Create a notification
+// @desc    Unread count for the navbar bell badge.
+// @route   GET /api/notifications/unread-count
+// @access  Private
+const getUnreadCount = asyncHandler(async (req, res) => {
+  requireWorkspace(req);
+
+  const count = await notificationService.getUnreadCount(req.user.id, req.workspace.id);
+  return sendSuccess(res, { message: "Unread count fetched", data: { count } });
+});
+
+// @desc    Broadcast an Organization Announcement to every active
+//          workspace member.
 // @route   POST /api/notifications
-// @access  Private
-const createNotification = asyncHandler(async (req, res) => {
-  const userId = req.user.id;
-  const { title, message, type } = req.body;
+// @access  Organization Admin (notifications.manage)
+const createAnnouncement = asyncHandler(async (req, res) => {
+  requireWorkspace(req);
 
-  const payload = {
-    user_id: userId,
+  const { title, message } = req.body;
+  if (!title) throw new ApiError(400, "title is required");
+
+  const members = await membershipRepository.listByWorkspace(req.workspace.id);
+  const recipientUserIds = (members || [])
+    .filter((m) => m.status === "active")
+    .map((m) => m.user_id)
+    .filter(Boolean);
+
+  // Fire-and-forget per eventBusService.js's documented call pattern —
+  // the HTTP response doesn't wait on every recipient's row being
+  // written, same non-blocking posture as auditLogRepository elsewhere.
+  eventBusService.publish(EVENT_TYPES.ORGANIZATION_ANNOUNCEMENT, {
+    workspaceId: req.workspace.id,
+    actorUserId: req.user.id,
+    recipientUserIds,
+    module: "Organization",
     title,
-    message,
-    type: type || "info",
-    is_read: false,
-    workspace_id: workspaceIdForInsert(req),
-  };
-
-  const { data, error } = await supabaseAdmin
-    .from("notifications")
-    .insert([payload])
-    .select("*")
-    .single();
-
-  if (error) throw new ApiError(500, "Failed to create notification", error.message);
-
-  return sendSuccess(res, { statusCode: 201, message: "Notification created successfully", data });
-});
-
-// @desc    Update a notification (e.g. mark as read/unread)
-// @route   PUT /api/notifications/:id
-// @access  Private
-const updateNotification = asyncHandler(async (req, res) => {
-  const userId = req.user.id;
-  const { id } = req.params;
-  const { isRead, title, message, type } = req.body;
-
-  const payload = {
-    ...(isRead !== undefined && { is_read: isRead }),
-    ...(title !== undefined && { title }),
-    ...(message !== undefined && { message }),
-    ...(type !== undefined && { type }),
-  };
-
-  const { data, error } = await supabaseAdmin
-    .from("notifications")
-    .update(payload)
-    .eq("id", id)
-    .eq("user_id", userId)
-    .select("*")
-    .maybeSingle();
-
-  if (error) throw new ApiError(500, "Failed to update notification", error.message);
-  if (!data) throw new ApiError(404, "Notification not found");
-
-  return sendSuccess(res, { message: "Notification updated successfully", data });
-});
-
-// @desc    Mark all notifications as read
-// @route   PUT /api/notifications/read-all
-// @access  Private
-const markAllAsRead = asyncHandler(async (req, res) => {
-  const userId = req.user.id;
-
-  const { data, error } = await supabaseAdmin
-    .from("notifications")
-    .update({ is_read: true })
-    .eq("user_id", userId)
-    .eq("is_read", false)
-    .select("id");
-
-  if (error) throw new ApiError(500, "Failed to mark notifications as read", error.message);
+    message: message || null,
+  });
 
   return sendSuccess(res, {
-    message: "All notifications marked as read",
-    data: { updatedCount: data?.length || 0 },
+    statusCode: 201,
+    message: "Announcement is being sent",
+    data: { recipientCount: recipientUserIds.length },
   });
 });
 
-// @desc    Delete a notification
-// @route   DELETE /api/notifications/:id
-// @access  Private
-const deleteNotification = asyncHandler(async (req, res) => {
-  const userId = req.user.id;
+// @desc    Update a notification (mark read/unread). Kept as PUT :id
+//          for backward compatibility with the existing frontend.
+// @route   PUT /api/notifications/:id
+// @access  Private (own notification only)
+const updateNotification = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const { isRead } = req.body;
 
-  const { data, error } = await supabaseAdmin
-    .from("notifications")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", userId)
-    .select("id")
-    .maybeSingle();
+  const data = await notificationService.markAsRead(id, req.user.id, isRead !== undefined ? isRead : true);
+  return sendSuccess(res, { message: "Notification updated successfully", data });
+});
 
-  if (error) throw new ApiError(500, "Failed to delete notification", error.message);
-  if (!data) throw new ApiError(404, "Notification not found");
+// @desc    Mark all of the caller's notifications as read.
+// @route   PUT /api/notifications/read-all
+// @access  Private
+const markAllAsRead = asyncHandler(async (req, res) => {
+  requireWorkspace(req);
 
-  return sendSuccess(res, { message: "Notification deleted successfully", data: { id } });
+  const result = await notificationService.markAllAsRead(req.user.id, req.workspace.id);
+  return sendSuccess(res, { message: "All notifications marked as read", data: result });
+});
+
+// @desc    Delete a notification.
+// @route   DELETE /api/notifications/:id
+// @access  Private (own notification only)
+const deleteNotification = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const result = await notificationService.deleteNotification(id, req.user.id);
+  return sendSuccess(res, { message: "Notification deleted successfully", data: result });
 });
 
 module.exports = {
   getNotifications,
-  createNotification,
+  getUnreadCount,
+  createAnnouncement,
   updateNotification,
   markAllAsRead,
   deleteNotification,

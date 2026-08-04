@@ -1,16 +1,12 @@
-# React + Vite
+# FinFlow Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+## Production readiness notes
 
-Currently, two official plugins are available:
+- The app now includes a top-level error boundary so unexpected UI failures surface a graceful fallback instead of a blank screen.
+- Dashboard and transaction views now show loading skeletons and empty states during slow or empty responses.
+- The production build is validated with Vite before release.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Verification
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+- `npm run build`
+- `npm run dev`

@@ -32,6 +32,8 @@ const { uploadToSupabaseStorage } = require("../utils/upload");
 const { workspaceIdForInsert } = require("../utils/workspaceScope");
 const transactionRepository = require("../repositories/transactionRepository");
 const transactionService = require("../services/transactionService");
+const approvalRepository = require("../repositories/approvalRepository");
+const approvalService = require("../services/approvalService");
 
 // @desc    Get all transactions for the authenticated user
 // @route   GET /api/transactions
@@ -40,6 +42,10 @@ const transactionService = require("../services/transactionService");
 // employee_id, approval_status, payment_status, transaction_type,
 // from, to, page, limit
 const getTransactions = asyncHandler(async (req, res) => {
+  if (!req.workspace) {
+    throw new ApiError(400, "No active workspace resolved for this request");
+  }
+
   const userId = req.user.id;
   const {
     type,
@@ -58,7 +64,7 @@ const getTransactions = asyncHandler(async (req, res) => {
   const { rows, count, page: pageNum, pageSize } = await transactionRepository.listForUser(
     userId,
     {
-      workspaceId: req.workspace?.id,
+      workspaceId: req.workspace.id,
       type,
       categoryId: category_id,
       vendorId: vendor_id,
@@ -90,10 +96,14 @@ const getTransactions = asyncHandler(async (req, res) => {
 // @route   GET /api/transactions/:id
 // @access  Private
 const getTransactionById = asyncHandler(async (req, res) => {
+  if (!req.workspace) {
+    throw new ApiError(400, "No active workspace resolved for this request");
+  }
+
   const userId = req.user.id;
   const { id } = req.params;
 
-  const data = await transactionRepository.findByIdForUser(id, userId);
+  const data = await transactionRepository.findByIdForUser(id, userId, req.workspace.id);
 
   if (!data) throw new ApiError(404, "Transaction not found");
 
@@ -104,6 +114,10 @@ const getTransactionById = asyncHandler(async (req, res) => {
 // @route   POST /api/transactions
 // @access  Private
 const createTransaction = asyncHandler(async (req, res) => {
+  if (!req.workspace) {
+    throw new ApiError(400, "No active workspace resolved for this request");
+  }
+
   const userId = req.user.id;
   const {
     merchant,
@@ -198,6 +212,10 @@ const createTransaction = asyncHandler(async (req, res) => {
 // @route   PUT /api/transactions/:id
 // @access  Private
 const updateTransaction = asyncHandler(async (req, res) => {
+  if (!req.workspace) {
+    throw new ApiError(400, "No active workspace resolved for this request");
+  }
+
   const userId = req.user.id;
   const { id } = req.params;
   const {
@@ -230,7 +248,7 @@ const updateTransaction = asyncHandler(async (req, res) => {
     approvalStatus !== undefined ||
     paymentStatus !== undefined
   ) {
-    await transactionService.validateEnterpriseFields(req.workspace?.id, {
+    await transactionService.validateEnterpriseFields(req.workspace.id, {
       vendorId,
       employeeId,
       budgetId,
@@ -246,7 +264,7 @@ const updateTransaction = asyncHandler(async (req, res) => {
   // fields above.
   const category =
     categoryId !== undefined
-      ? await transactionService.assertCategoryInWorkspace(categoryId, req.workspace?.id)
+      ? await transactionService.assertCategoryInWorkspace(categoryId, req.workspace.id)
       : undefined;
 
   let receiptUrl;
@@ -278,7 +296,7 @@ const updateTransaction = asyncHandler(async (req, res) => {
     updated_at: new Date().toISOString(),
   };
 
-  const data = await transactionRepository.updateForUser(id, userId, payload);
+  const data = await transactionRepository.updateForUser(id, userId, payload, req.workspace.id);
 
   if (!data) throw new ApiError(404, "Transaction not found");
 
@@ -289,14 +307,98 @@ const updateTransaction = asyncHandler(async (req, res) => {
 // @route   DELETE /api/transactions/:id
 // @access  Private
 const deleteTransaction = asyncHandler(async (req, res) => {
+  if (!req.workspace) {
+    throw new ApiError(400, "No active workspace resolved for this request");
+  }
+
   const userId = req.user.id;
   const { id } = req.params;
 
-  const data = await transactionRepository.deleteForUser(id, userId);
+  const data = await transactionRepository.deleteForUser(id, userId, req.workspace.id);
 
   if (!data) throw new ApiError(404, "Transaction not found");
 
   return sendSuccess(res, { message: "Transaction deleted successfully", data: { id } });
+});
+
+// @desc    Submit a draft expense for approval
+// @route   POST /api/transactions/:id/submit
+// @access  Private (approvals.submit)
+const submitTransaction = asyncHandler(async (req, res) => {
+  if (!req.workspace) {
+    throw new ApiError(400, "No active workspace resolved for this request");
+  }
+
+  const data = await approvalService.submit(req.params.id, req.workspace.id);
+  return sendSuccess(res, { message: "Transaction submitted for approval", data });
+});
+
+// @desc    Approve a transaction at its current step (Dept Lead:
+//          submitted->under_review, Finance: under_review->approved)
+// @route   POST /api/transactions/:id/approve
+// @access  Private (approvals.act)
+const approveTransaction = asyncHandler(async (req, res) => {
+  if (!req.workspace) {
+    throw new ApiError(400, "No active workspace resolved for this request");
+  }
+
+  const data = await approvalService.approve(
+    req.params.id,
+    req.workspace.id,
+    req.membership,
+    req.user.id,
+    req.body?.notes
+  );
+  return sendSuccess(res, { message: "Transaction approved", data });
+});
+
+// @desc    Reject a transaction at its current step
+// @route   POST /api/transactions/:id/reject
+// @access  Private (approvals.act)
+const rejectTransaction = asyncHandler(async (req, res) => {
+  if (!req.workspace) {
+    throw new ApiError(400, "No active workspace resolved for this request");
+  }
+
+  const data = await approvalService.reject(
+    req.params.id,
+    req.workspace.id,
+    req.membership,
+    req.user.id,
+    req.body?.notes
+  );
+  return sendSuccess(res, { message: "Transaction rejected", data });
+});
+
+// @desc    Mark an approved transaction as reimbursed (terminal step)
+// @route   POST /api/transactions/:id/reimburse
+// @access  Private (approvals.act, Finance/Admin only)
+const reimburseTransaction = asyncHandler(async (req, res) => {
+  if (!req.workspace) {
+    throw new ApiError(400, "No active workspace resolved for this request");
+  }
+
+  const data = await approvalService.reimburse(req.params.id, req.workspace.id, req.membership);
+  return sendSuccess(res, { message: "Transaction marked as reimbursed", data });
+});
+
+// @desc    Get the full decision history behind a transaction's current
+//          approval_status (one row per submit/approve/reject decision)
+// @route   GET /api/transactions/:id/approvals
+// @access  Private (transactions.read)
+const getApprovalHistory = asyncHandler(async (req, res) => {
+  if (!req.workspace) {
+    throw new ApiError(400, "No active workspace resolved for this request");
+  }
+
+  const transaction = await transactionRepository.findByIdInWorkspaceForApproval(
+    req.params.id,
+    req.workspace.id
+  );
+  if (!transaction) throw new ApiError(404, "Transaction not found");
+
+  const data = await approvalRepository.listByTransaction(req.params.id);
+  return sendSuccess(res, { message: "Approval history fetched successfully", data });
 });
 
 module.exports = {
@@ -305,4 +407,9 @@ module.exports = {
   createTransaction,
   updateTransaction,
   deleteTransaction,
+  submitTransaction,
+  approveTransaction,
+  rejectTransaction,
+  reimburseTransaction,
+  getApprovalHistory,
 };

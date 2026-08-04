@@ -13,8 +13,8 @@ A production-ready Node.js/Express backend for **FinFlow** — an AI-powered per
 | Auth              | Supabase Auth (JWT) + Supabase Admin SDK |
 | Validation        | express-validator                        |
 | File Uploads      | multer + Supabase Storage                |
-| Security          | helmet, cors                             |
-| Logging           | morgan                                   |
+| Security          | helmet, cors, rate limiting             |
+| Logging           | morgan + centralized logger             |
 | Config            | dotenv                                   |
 
 ---
@@ -207,6 +207,11 @@ npm start
 ```
 
 The API will be available at `http://localhost:5000`. Check `GET /health` to confirm it's running.
+
+### Production readiness checks
+- `node --test test/env.test.js`
+- `npm run start`
+- `curl http://localhost:5000/health`
 
 ---
 

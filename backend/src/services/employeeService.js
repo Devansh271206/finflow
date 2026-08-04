@@ -23,11 +23,39 @@
  * VALID employment_status values enforced here (DB column has no CHECK
  * constraint applied in the migration, so this is the only guardrail):
  * 'active' | 'on_leave' | 'terminated'
+ *
+ * Sprint 7: phone, address, emergencyContactName, emergencyContactPhone,
+ * notes added (011_employee_contact_fields.sql). These are ordinary
+ * profile fields — no uniqueness or cross-entity validation needed,
+ * unlike employeeCode/email/departmentId/reportingManagerId above.
  */
 
 const employeeRepository = require("../repositories/employeeRepository");
 const departmentRepository = require("../repositories/departmentRepository");
+const membershipRepository = require("../repositories/membershipRepository");
 const ApiError = require("../utils/ApiError");
+const eventBusService = require("./eventBusService");
+const { EVENT_TYPES } = require("../events/eventTypes");
+
+/**
+ * Sprint 14: employeeService's createEmployee/updateEmployee don't
+ * receive an actorUserId (confirmed — neither function's signature
+ * threads one through from employeeController.js today, and adding
+ * one would ripple into that controller's call sites, out of scope
+ * for this sprint's file list). Recipients are therefore resolved as
+ * every Admin/HR member (the roles with org-wide employee visibility),
+ * not "notify the specific person who acted" — actorUserId is
+ * published as null, which notificationService.js/activityService.js
+ * both handle gracefully (activity feed shows no actor, which is
+ * honest given the data available, rather than guessing).
+ */
+async function resolveAdminHRUserIds(workspaceId) {
+  const members = await membershipRepository.listByWorkspace(workspaceId);
+  return (members || [])
+    .filter((m) => m.status === "active" && ["ADMIN", "OWNER", "FOUNDER", "HR"].includes(String(m.roles?.key || "").toUpperCase()))
+    .map((m) => m.user_id)
+    .filter(Boolean);
+}
 
 const VALID_STATUSES = ["active", "on_leave", "terminated"];
 const VALID_EMPLOYMENT_TYPES = ["full_time", "part_time", "contract", "intern"];
@@ -69,6 +97,8 @@ function normalizeEmployee(employee) {
     employee_code: employee.employee_code,
     full_name: employee.full_name,
     email: employee.email,
+    phone: employee.phone,
+    address: employee.address,
     designation: employee.designation,
     department_id: employee.department_id,
     department: employee.departments?.name || null,
@@ -78,9 +108,13 @@ function normalizeEmployee(employee) {
     employment_type: employee.employment_type,
     date_of_joining: employee.date_of_joining,
     date_of_exit: employee.date_of_exit,
+    emergency_contact_name: employee.emergency_contact_name,
+    emergency_contact_phone: employee.emergency_contact_phone,
+    notes: employee.notes,
     is_active: employee.is_active,
     deleted_at: employee.deleted_at,
     created_at: employee.created_at,
+    updated_at: employee.updated_at,
   };
 }
 
@@ -151,12 +185,18 @@ async function getDirectReports(managerId, workspaceId) {
  * the DB level (NOT NULL), so both are validated here before insert
  * rather than relying on the DB to reject a bad payload. email is
  * optional but must be unique within the workspace when supplied.
+ *
+ * phone/address/emergencyContactName/emergencyContactPhone/notes
+ * [Sprint 7] are all optional, free-form, and require no validation
+ * beyond what the route-level express-validator chain already applies.
  */
 async function createEmployee(workspaceId, payload) {
   const {
     employeeCode,
     fullName,
     email,
+    phone,
+    address,
     designation,
     departmentId,
     reportingManagerId,
@@ -164,6 +204,9 @@ async function createEmployee(workspaceId, payload) {
     employmentStatus,
     employmentType,
     dateOfJoining,
+    emergencyContactName,
+    emergencyContactPhone,
+    notes,
   } = payload;
 
   if (!employeeCode || !employeeCode.trim()) {
@@ -199,6 +242,8 @@ async function createEmployee(workspaceId, payload) {
     employee_code: employeeCode,
     full_name: fullName,
     email: email || null,
+    phone: phone || null,
+    address: address || null,
     designation,
     department_id: departmentId,
     reporting_manager_id: reportingManagerId || null,
@@ -206,7 +251,26 @@ async function createEmployee(workspaceId, payload) {
     employment_type: employmentType || "full_time",
     date_of_joining: dateOfJoining,
     date_of_exit: null,
+    emergency_contact_name: emergencyContactName || null,
+    emergency_contact_phone: emergencyContactPhone || null,
+    notes: notes || null,
   });
+
+  resolveAdminHRUserIds(workspaceId)
+    .then((recipientUserIds) => {
+      eventBusService.publish(EVENT_TYPES.EMPLOYEE_CREATED, {
+        workspaceId,
+        actorUserId: null,
+        recipientUserIds,
+        module: "Employee",
+        resourceType: "employee",
+        resourceId: employee.id,
+        title: `${employee.full_name} joined as ${designation}`,
+        actionUrl: `/employees?id=${employee.id}`,
+        metadata: { departmentId },
+      });
+    })
+    .catch((err) => console.error("[employeeService] Failed to resolve recipients for EMPLOYEE_CREATED event:", err.message));
 
   return normalizeEmployee(employee);
 }
@@ -219,6 +283,8 @@ async function updateEmployee(id, workspaceId, payload) {
     employeeCode,
     fullName,
     email,
+    phone,
+    address,
     designation,
     departmentId,
     reportingManagerId,
@@ -227,6 +293,9 @@ async function updateEmployee(id, workspaceId, payload) {
     employmentType,
     dateOfJoining,
     dateOfExit,
+    emergencyContactName,
+    emergencyContactPhone,
+    notes,
   } = payload;
 
   if (employeeCode !== undefined) {
@@ -256,6 +325,8 @@ async function updateEmployee(id, workspaceId, payload) {
     ...(employeeCode !== undefined && { employee_code: employeeCode }),
     ...(fullName !== undefined && { full_name: fullName }),
     ...(email !== undefined && { email: email || null }),
+    ...(phone !== undefined && { phone: phone || null }),
+    ...(address !== undefined && { address: address || null }),
     ...(designation !== undefined && { designation }),
     ...(departmentId !== undefined && { department_id: departmentId }),
     ...(reportingManagerId !== undefined && { reporting_manager_id: reportingManagerId || null }),
@@ -264,9 +335,29 @@ async function updateEmployee(id, workspaceId, payload) {
     ...(employmentType !== undefined && { employment_type: employmentType }),
     ...(dateOfJoining !== undefined && { date_of_joining: dateOfJoining }),
     ...(dateOfExit !== undefined && { date_of_exit: dateOfExit || null }),
+    ...(emergencyContactName !== undefined && { emergency_contact_name: emergencyContactName || null }),
+    ...(emergencyContactPhone !== undefined && { emergency_contact_phone: emergencyContactPhone || null }),
+    ...(notes !== undefined && { notes: notes || null }),
   };
 
   const updated = await employeeRepository.update(id, updatePayload);
+
+  resolveAdminHRUserIds(workspaceId)
+    .then((recipientUserIds) => {
+      eventBusService.publish(EVENT_TYPES.EMPLOYEE_UPDATED, {
+        workspaceId,
+        actorUserId: null,
+        recipientUserIds,
+        module: "Employee",
+        resourceType: "employee",
+        resourceId: id,
+        title: `${updated.full_name}'s profile was updated`,
+        actionUrl: `/employees?id=${id}`,
+        metadata: { changedFields: Object.keys(updatePayload) },
+      });
+    })
+    .catch((err) => console.error("[employeeService] Failed to resolve recipients for EMPLOYEE_UPDATED event:", err.message));
+
   return normalizeEmployee(updated);
 }
 

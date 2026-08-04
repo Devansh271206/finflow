@@ -14,6 +14,11 @@ function normalizeTransaction(row) {
     title: row.title || row.merchant || "Transaction",
     notes: row.notes || "",
     category_id: row.category_id || null,
+    // Sprint 4: exposed for the approval-workflow UI (submit/approve/
+    // reject/reimburse buttons need to know current state and, for
+    // Dept Lead scoping, which department the transaction belongs to).
+    approvalStatus: row.approval_status || null,
+    departmentId: row.department_id || null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -33,9 +38,9 @@ function buildTransactionPayload(transaction) {
   };
 }
 
-export async function getTransactions() {
+export async function getTransactions(params = {}) {
   try {
-    const { data, error } = await apiGet("/transactions");
+    const { data, error } = await apiGet("/transactions", params);
 
     if (error) {
       return { data: [], error };
@@ -108,4 +113,33 @@ export async function updateTransaction(id, updates) {
   } catch (error) {
     return { data: null, error };
   }
+}
+
+// Sprint 4 — Expense Approval Workflow. These four intentionally return
+// the raw normalized transaction, same as the functions above, so a
+// caller can immediately read the new approvalStatus off the result
+// without a second fetch.
+
+export async function submitTransaction(id) {
+  const { data, error } = await apiPost(`/transactions/${id}/submit`);
+  return { data: data ? normalizeTransaction(data) : null, error };
+}
+
+export async function approveTransaction(id, notes) {
+  const { data, error } = await apiPost(`/transactions/${id}/approve`, { notes });
+  return { data: data ? normalizeTransaction(data) : null, error };
+}
+
+export async function rejectTransaction(id, notes) {
+  const { data, error } = await apiPost(`/transactions/${id}/reject`, { notes });
+  return { data: data ? normalizeTransaction(data) : null, error };
+}
+
+export async function reimburseTransaction(id) {
+  const { data, error } = await apiPost(`/transactions/${id}/reimburse`);
+  return { data: data ? normalizeTransaction(data) : null, error };
+}
+
+export async function getApprovalHistory(id) {
+  return apiGet(`/transactions/${id}/approvals`);
 }
