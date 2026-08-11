@@ -71,11 +71,13 @@ const WorkspaceSwitcher = () => {
 
   const handleCreate = async (e) => {
     e.preventDefault();
-    if (!newWorkspaceName.trim() || !companyId) return;
+    if (!newWorkspaceName.trim()) return;
 
     setCreating(true);
     const { data, error } = await createWorkspace({
-      companyId,
+      // Only send companyId when the user owns companies — otherwise the
+      // backend auto-creates a company for them.
+      companyId: companies.length ? companyId : null,
       name: newWorkspaceName.trim(),
     });
     setCreating(false);
@@ -190,8 +192,8 @@ const WorkspaceSwitcher = () => {
 
           {companies.length === 0 && (
             <p className="text-xs text-slate-500">
-              You don't own a company yet — a company is required before creating a
-              workspace. Create a company first (Settings) to continue.
+              You don't own a company yet — we'll create one for you automatically
+              when the workspace is created.
             </p>
           )}
 
@@ -202,14 +204,13 @@ const WorkspaceSwitcher = () => {
             onChange={(e) => setNewWorkspaceName(e.target.value)}
             autoFocus
             required
-            disabled={companies.length === 0}
           />
 
           <Button
             type="submit"
             className="w-full justify-center"
             loading={creating}
-            disabled={creating || companies.length === 0}
+            disabled={creating}
           >
             Create Workspace
           </Button>

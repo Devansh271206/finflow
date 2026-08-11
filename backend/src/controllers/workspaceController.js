@@ -36,31 +36,60 @@ const getWorkspaces = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: "Workspaces fetched", data: memberships });
 });
 
-// @desc    Create a new workspace under an existing company. A company
-//          can own multiple workspaces (PRD §5.1, e.g. Production/Sandbox).
+// @desc    Create a new workspace. A workspace belongs to a company
+//          (PRD §5.1). If the caller passes an owned company_id, the
+//          workspace is created under it. If company_id is omitted, the
+//          caller's company is used when they own exactly one; otherwise
+//          a company is auto-created for the caller so any user can
+//          bootstrap their own workspace without a separate "create
+//          company" step.
 // @route   POST /api/workspaces
-// @access  Private (must own the parent company)
+// @access  Private
 const createWorkspace = asyncHandler(async (req, res) => {
   const { company_id, name } = req.body;
-  if (!company_id || !name) {
-    throw new ApiError(400, "company_id and name are required");
+  if (!name) {
+    throw new ApiError(400, "name is required");
   }
 
-  const company = await companyRepository.findById(company_id);
-  if (!company) throw new ApiError(404, "Company not found");
-  if (company.owner_user_id !== req.user.id) {
-    throw new ApiError(403, "You do not have access to this company");
+  let company = null;
+
+  if (company_id) {
+    company = await companyRepository.findById(company_id);
+    if (!company) throw new ApiError(404, "Company not found");
+    if (company.owner_user_id !== req.user.id) {
+      throw new ApiError(403, "You do not have access to this company");
+    }
+  } else {
+    // Pick the caller's sole company, else auto-create one for them.
+    const owned = await companyRepository.findByOwner(req.user.id);
+    if (owned.length === 1) {
+      company = owned[0];
+    } else {
+      let companySlug = slugify(name);
+      let companyAttempt = 0;
+      while (await companyRepository.findBySlug(companySlug)) {
+        companyAttempt += 1;
+        companySlug = `${slugify(name)}-${companyAttempt}`;
+      }
+      company = await companyRepository.create({
+        name,
+        slug: companySlug,
+        currency: "INR",
+        timezone: "Asia/Kolkata",
+        owner_user_id: req.user.id,
+      });
+    }
   }
 
   let slug = slugify(name);
   let attempt = 0;
-  while (await workspaceRepository.slugExistsInCompany(company_id, slug)) {
+  while (await workspaceRepository.slugExistsInCompany(company.id, slug)) {
     attempt += 1;
     slug = `${slugify(name)}-${attempt}`;
   }
 
   const workspace = await workspaceRepository.create({
-    company_id,
+    company_id: company.id,
     name,
     slug,
     status: "active",
@@ -92,7 +121,7 @@ const createWorkspace = asyncHandler(async (req, res) => {
   return sendSuccess(res, {
     statusCode: 201,
     message: "Workspace created",
-    data: workspace,
+    data: { ...workspace, company_id: company.id, company: { id: company.id, name: company.name } },
   });
 });
 

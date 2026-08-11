@@ -22,7 +22,10 @@ router.get("/", getWorkspaces);
 router.post(
   "/",
   [
-    body("company_id").notEmpty().withMessage("company_id is required"),
+    body("company_id")
+      .optional({ nullable: true })
+      .isUUID()
+      .withMessage("company_id must be a valid UUID"),
     body("name").notEmpty().withMessage("Workspace name is required"),
   ],
   validateRequest,
