@@ -188,4 +188,4 @@ module.exports = {
   SELECT_COLUMNS,
   SORTABLE_COLUMNS,
   ACTIVE_STATUSES,
-};
+};  

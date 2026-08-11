@@ -13,9 +13,14 @@
 -- already-live table) — it formalizes and extends the table that's
 -- already there.
 --
--- Confirmed existing columns (from notificationController.js /
--- essService.js's exact .select("*") / .eq() usage):
---   id, user_id, workspace_id, title, message, type, is_read, created_at
+-- Confirmed existing columns (from notificationController.js's insert/
+-- select code) were assumed to include title/message/type/is_read —
+-- this assumption was WRONG for at least `type` (confirmed by a live
+-- "column \"type\" does not exist" error against a real database).
+-- essService.js's getNotificationSummary() only ever used .select("*"),
+-- so nothing had actually verified these columns pre-existed. Every
+-- column below is now added defensively via ADD COLUMN IF NOT EXISTS
+-- rather than assumed present — see the corrected block below.
 --
 -- This migration adds:
 --   resource_type, resource_id, action_url  (so a notification can deep
@@ -65,12 +70,32 @@ CREATE TABLE IF NOT EXISTS notifications (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
   user_id     UUID NOT NULL REFERENCES auth.users(id),
-  title       TEXT NOT NULL,
-  message     TEXT,
-  type        TEXT NOT NULL DEFAULT 'info',
-  is_read     BOOLEAN NOT NULL DEFAULT false,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- CORRECTION: CREATE TABLE IF NOT EXISTS above is a no-op against an
+-- already-live table — it does NOT retroactively add columns to an
+-- existing table with a different shape. This migration originally
+-- assumed title/message/type/is_read already existed on the live
+-- table (inferred from notificationController.js's code, which was
+-- never actually verified against the real schema — essService.js's
+-- getNotificationSummary() only ever used .select("*"), so nothing
+-- confirmed these columns' existence). Confirmed via the reported
+-- "column \"type\" does not exist" error that at least `type` was
+-- genuinely missing. Every column this migration touches is now
+-- explicitly ADD COLUMN IF NOT EXISTS'd, defensively, rather than
+-- assumed:
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS message TEXT;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'info';
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS is_read BOOLEAN NOT NULL DEFAULT false;
+
+-- title was NOT NULL in this migration's original CREATE TABLE
+-- statement; backfill any pre-existing NULL rows before enforcing that
+-- constraint, since ADD COLUMN above can't retroactively set NOT NULL
+-- on a column that may already have NULL data in it.
+UPDATE notifications SET title = 'Notification' WHERE title IS NULL;
+ALTER TABLE notifications ALTER COLUMN title SET NOT NULL;
 
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS resource_type TEXT;
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS resource_id UUID;

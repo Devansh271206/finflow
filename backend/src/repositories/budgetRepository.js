@@ -92,30 +92,31 @@ async function remove(id, workspaceId) {
 }
 
 /**
- * Computes actual spend for a set of budgets, scoped correctly by
- * workspace_id + category_id (falling back to department_id only when a
- * budget has no category_id, e.g. a department-wide budget), and bounded
- * to each budget's period_start..period_end window. This replaces the
- * old attachSpendData() name-matching hack entirely.
- *
- * Sprint 4 fix (confirmed with product owner): only transactions with
- * approval_status 'approved' or 'reimbursed' count toward spend, plus
- * NULL (transactions predating the approval workflow / not routed
- * through it at all — treated as exempt rather than silently zeroed
- * out). Before this fix, a 'draft', 'submitted', 'under_review', or
- * even 'rejected' expense inflated budget utilization identically to
- * an approved one — which defeated the entire point of having an
- * approval workflow. See migrations/009_expense_approval_workflow.sql.
+ * Computes actual spend for a set of budgets, bounded to each budget's
+ * period_start..period_end window. Matching precedence, per the
+ * enterprise transaction refactor (migrations/002_enterprise_transactions.sql
+ * added transactions.budget_id):
+ *   1. Direct budget_id match — a transaction explicitly tagged against
+ *      this budget (vendor invoices, payroll, etc. assigned at entry
+ *      time). Takes priority and skips category/department inference
+ *      entirely for that transaction.
+ *   2. category_id match (existing Phase F.3 behavior), for budgets
+ *      that don't rely on explicit tagging.
+ *   3. department_id match, only when a budget has no category_id
+ *      (e.g. a department-wide budget) — unchanged fallback.
+ * This keeps every budget created before budget_id existed working
+ * exactly as before (transactions without a budget_id fall through to
+ * category/department matching, same as today), while giving newly
+ * created enterprise transactions a way to be counted precisely.
  */
 async function computeSpendForBudgets(workspaceId, budgets) {
   if (!budgets.length) return new Map();
 
   const { data: transactions, error } = await supabaseAdmin
     .from("transactions")
-    .select("amount, type, category_id, department_id, transaction_date, approval_status")
+    .select("amount, type, category_id, department_id, budget_id, transaction_date")
     .eq("workspace_id", workspaceId)
-    .neq("type", "income")
-    .or("approval_status.in.(approved,reimbursed),approval_status.is.null");
+    .neq("type", "income");
 
   if (error) throw error;
 
@@ -135,6 +136,7 @@ async function computeSpendForBudgets(workspaceId, budgets) {
 
       if (!inPeriod) return false;
 
+      if (t.budget_id) return t.budget_id === budget.id;
       if (budget.category_id) return t.category_id === budget.category_id;
       if (budget.department_id) return t.department_id === budget.department_id;
       return false;
