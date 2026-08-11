@@ -125,8 +125,20 @@ app.use(apiLimiter);
 app.use(morgan(env.isProduction ? "combined" : "dev"));
 
 // ------------------------------------------------------------------
-// Health check
+// Root + Health check
 // ------------------------------------------------------------------
+app.get("/", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "FinFlow API is running",
+    data: {
+      service: "finflow-backend",
+      environment: env.NODE_ENV,
+      timestamp: new Date().toISOString(),
+    },
+  });
+});
+
 app.get("/health", (req, res) => {
   res.status(200).json({
     success: true,
