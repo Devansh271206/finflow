@@ -12,6 +12,7 @@ import DashboardLayout from './layouts/DashboardLayout';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import OnboardingWizard from './pages/onboarding/OnboardingWizard';
+import InviteJoin from './pages/InviteJoin';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
 import Budgets from './pages/Budgets';
@@ -106,6 +107,8 @@ const AnimatedRoutes = () => {
         <Route path="/login" element={<PageTransition><Login /></PageTransition>} />
         <Route path="/register" element={<PageTransition><Register /></PageTransition>} />
         <Route path="/onboarding" element={<PageTransition><OnboardingWizard /></PageTransition>} />
+        {/* Workspace invitation accept page — public; handles auth internally */}
+        <Route path="/invite" element={<PageTransition><InviteJoin /></PageTransition>} />
 
         {/* Dashboard layouts */}
         <Route path="/dashboard" element={

@@ -97,6 +97,18 @@ export const AppProvider = ({ children }) => {
   const register = useCallback(async (name, email, password) => {
     const { data, error } = await signUp(email, password, name);
     if (error) throw new Error(error.message || 'Unable to create account.');
+
+    // Supabase returns NO session when email confirmation is required.
+    // It also returns no/empty identities when the email is ALREADY
+    // registered — in that case Supabase does NOT send another email,
+    // so we must not claim one was sent. This check distinguishes the
+    // two cases instead of blindly showing "check your email".
+    const user = data?.user;
+    const identities = user?.identities || [];
+    if (!user || identities.length === 0) {
+      throw new Error('An account with this email already exists. Please log in instead.');
+    }
+
     if (data?.session) {
       toast.success('Registration successful! Welcome!', { style: TOAST_STYLE });
     } else {

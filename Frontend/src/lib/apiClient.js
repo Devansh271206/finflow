@@ -10,7 +10,12 @@ export function setActiveWorkspaceId(workspaceId) {
 
 
 function buildUrl(path, params) {
-  const baseUrl = import.meta.env.VITE_API_URL || "";
+  // Prefer the configured API base (VITE_API_URL — must be the deployed
+  // backend URL in production, e.g. https://<backend>.vercel.app/api).
+  // Fall back to the current origin so an unset variable can never
+  // silently route production traffic to localhost.
+  const configuredBase = import.meta.env.VITE_API_URL || "";
+  const baseUrl = configuredBase || window.location.origin;
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const url = new URL(`${baseUrl}${normalizedPath}`);
 

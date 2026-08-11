@@ -21,6 +21,7 @@ import {
   deactivateMember,
   removeMember,
 } from '../services/membershipService';
+import { createInvitation } from '../services/invitationService';
 
 const STATUS_VARIANT = {
   active: 'success',
@@ -58,6 +59,7 @@ const TeamManagement = () => {
   const [addRoleId, setAddRoleId] = useState('');
   const [addDeptId, setAddDeptId] = useState('');
   const [addingMember, setAddingMember] = useState(false);
+  const [inviteMode, setInviteMode] = useState(false);
 
   const refreshMembers = useCallback(async () => {
     setLoading(true);
@@ -167,6 +169,7 @@ const TeamManagement = () => {
     setAddEmail('');
     setAddRoleId('');
     setAddDeptId('');
+    setInviteMode(false);
     setAddModalOpen(true);
   };
 
@@ -175,11 +178,17 @@ const TeamManagement = () => {
     if (!addEmail.trim() || !addRoleId) return;
 
     setAddingMember(true);
-    const { error } = await createMember({
-      email: addEmail.trim(),
-      roleId: addRoleId,
-      departmentId: addDeptId || null,
-    });
+    const { error } = inviteMode
+      ? await createInvitation({
+          email: addEmail.trim(),
+          roleId: addRoleId,
+          departmentId: addDeptId || null,
+        })
+      : await createMember({
+          email: addEmail.trim(),
+          roleId: addRoleId,
+          departmentId: addDeptId || null,
+        });
     setAddingMember(false);
 
     if (error) {
@@ -187,7 +196,7 @@ const TeamManagement = () => {
       return;
     }
 
-    toast.success('Member added to workspace.');
+    toast.success(inviteMode ? 'Invitation sent to their email.' : 'Member added to workspace.');
     setAddModalOpen(false);
     refreshMembers();
   };
@@ -407,12 +416,30 @@ const TeamManagement = () => {
         </form>
       </Modal>
 
-      {/* Add Member Modal */}
+      {/* Add Member / Invite Modal */}
       <Modal isOpen={addModalOpen} onClose={() => setAddModalOpen(false)} title="Add Member">
         <form onSubmit={handleAddMember} className="space-y-4">
+          <div className="flex rounded-xl bg-white/5 border border-white/10 p-1 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setInviteMode(false)}
+              className={`flex-1 rounded-lg py-2 transition-colors ${!inviteMode ? 'bg-[#10b981] text-white' : 'text-slate-400 hover:text-white'}`}
+            >
+              Add existing member
+            </button>
+            <button
+              type="button"
+              onClick={() => setInviteMode(true)}
+              className={`flex-1 rounded-lg py-2 transition-colors ${inviteMode ? 'bg-[#10b981] text-white' : 'text-slate-400 hover:text-white'}`}
+            >
+              Invite by email
+            </button>
+          </div>
+
           <p className="text-xs text-slate-500 -mt-1">
-            Adds an existing, already-registered user to this workspace by email.
-            This does not send an invitation or create a new account.
+            {inviteMode
+              ? 'Sends an invitation link to this email. The recipient creates or signs in to their account and joins on acceptance.'
+              : 'Adds an existing, already-registered user to this workspace by email. This does not send an invitation or create a new account.'}
           </p>
 
           <div className="flex flex-col gap-1.5">
@@ -461,7 +488,7 @@ const TeamManagement = () => {
           </div>
 
           <Button type="submit" className="w-full justify-center" loading={addingMember} disabled={addingMember}>
-            Add to Workspace
+            {inviteMode ? 'Send Invitation' : 'Add to Workspace'}
           </Button>
         </form>
       </Modal>

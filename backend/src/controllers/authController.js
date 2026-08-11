@@ -15,6 +15,7 @@ const { supabaseAdmin, supabaseAuthClient } = require("../config/supabase");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess, sendError } = require("../utils/apiResponse");
 const ApiError = require("../utils/ApiError");
+const env = require("../config/env");
 
 // @desc    Register a new user
 // @route   POST /api/auth/register
@@ -27,11 +28,27 @@ const register = asyncHandler(async (req, res) => {
     password,
     options: {
       data: { full_name: fullName || "" },
+      // Ensure the confirmation link in the verification email points at
+      // the deployed frontend (env.FRONTEND_URL), not localhost, in
+      // production. The origin must be in Supabase's Redirect URLs list.
+      emailRedirectTo: `${env.FRONTEND_URL}/login?confirmed=true`,
     },
   });
 
   if (error) {
     throw new ApiError(error.status || 400, error.message);
+  }
+
+  // When the email is ALREADY registered, Supabase returns no session
+  // AND no identities, and does NOT send another verification email.
+  // Surface that instead of pretending a new email was sent.
+  const existingAccount =
+    !data?.user || !Array.isArray(data.user.identities) || data.user.identities.length === 0;
+  if (existingAccount) {
+    throw new ApiError(
+      409,
+      "An account with this email already exists. Please log in instead."
+    );
   }
 
   // Create a matching profile row so the rest of the API can rely on it existing.

@@ -31,6 +31,22 @@ export const Login = () => {
 
     try {
       await login(email, password);
+      // If the user landed here from a workspace invitation link, return
+      // them to the /invite page to accept it after signing in.
+      let pendingInvite = null;
+      try {
+        const raw = sessionStorage.getItem('finflow_pending_invite');
+        if (raw) {
+          pendingInvite = JSON.parse(raw);
+          sessionStorage.removeItem('finflow_pending_invite');
+        }
+      } catch {
+        pendingInvite = null;
+      }
+      if (pendingInvite?.token) {
+        navigate(`/invite?token=${encodeURIComponent(pendingInvite.token)}`);
+        return;
+      }
       navigate('/dashboard');
     } catch (error) {
       setErrors({ form: error.message || 'Invalid email or password.' });

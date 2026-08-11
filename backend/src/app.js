@@ -54,6 +54,7 @@ const attachmentRoutes = require("./routes/attachmentRoutes");
 
 const membershipRoutes = require("./routes/membershipRoutes");
 const membershipPermissionGrantRoutes = require("./routes/membershipPermissionGrantRoutes");
+const invitationRoutes = require("./routes/invitationRoutes");
 
 // Sprint 9: Leave Management
 const leaveTypeRoutes = require("./routes/leaveTypeRoutes");
@@ -187,6 +188,7 @@ app.use("/api/vendors", vendorRoutes);
 app.use("/api/transactions/:transactionId/attachments", attachmentRoutes);
 app.use("/api/memberships", membershipRoutes);   // <-- add this line (was require'd on line 33 but never mounted — every team-management endpoint was 404ing)
 app.use("/api/memberships/:membershipId/permission-grants", membershipPermissionGrantRoutes);
+app.use("/api/invitations", invitationRoutes);
 
 // Sprint 9: Leave Management
 app.use("/api/leave-types", leaveTypeRoutes);

@@ -235,19 +235,31 @@ async function update(id, payload) {
  * We use the service-role Admin API to find the auth user by email,
  * then return their profile row by the resolved user_id.
  *
+ * `admin.listUsers` paginates (max 1000 per page), so this walks every
+ * page rather than only inspecting the first page — a naive single-page
+ * lookup silently misses users once the project has more than 1000 auth
+ * users.
+ *
  * Returns null when no auth user with that email exists.
  */
 async function findProfileByEmail(email) {
-  // Step 1 — resolve user_id from auth.users via the Admin API.
-  const { data: listData, error: listError } =
-    await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
-
-  if (listError) throw listError;
-
   const normalised = email.trim().toLowerCase();
-  const authUser = (listData?.users || []).find(
-    (u) => (u.email || "").toLowerCase() === normalised
-  );
+  let authUser = null;
+
+  const PER_PAGE = 1000;
+  let page = 1;
+  while (!authUser && page <= 100) {
+    const { data: listData, error: listError } =
+      await supabaseAdmin.auth.admin.listUsers({ page, perPage: PER_PAGE });
+
+    if (listError) throw listError;
+
+    const users = listData?.users || [];
+    authUser = users.find((u) => (u.email || "").toLowerCase() === normalised) || null;
+
+    if (users.length < PER_PAGE) break; // last page reached
+    page += 1;
+  }
 
   if (!authUser) return null;
 

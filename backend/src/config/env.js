@@ -32,6 +32,11 @@ const env = Object.freeze({
   PORT: parsePositiveInteger(process.env.PORT, 5000),
   CORS_ORIGIN: process.env.CORS_ORIGIN || "*",
 
+  // Public origin of the deployed frontend. Used as the base for
+  // email links (confirmation, invitations). Must be the Vercel
+  // frontend URL in production; falls back to the local dev server.
+  FRONTEND_URL: (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/+$/, ""),
+
   // File storage - was previously re-declared with the same fallback
   // in attachmentController.js, upload.js (x3), and employeeDocumentService.js
   SUPABASE_STORAGE_BUCKET: process.env.SUPABASE_STORAGE_BUCKET || "finflow-uploads",
