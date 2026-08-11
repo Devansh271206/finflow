@@ -16,6 +16,7 @@ const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess, sendError } = require("../utils/apiResponse");
 const ApiError = require("../utils/ApiError");
 const env = require("../config/env");
+const passwordResetService = require("../services/passwordResetService");
 
 // @desc    Register a new user
 // @route   POST /api/auth/register
@@ -143,4 +144,48 @@ const refreshToken = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { register, login, logout, getMe, refreshToken };
+// @desc    Request a password reset link (emailed via emailService)
+// @route   POST /api/auth/forgot-password
+// @access  Public
+const forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  // Always returns the same generic message (also for unknown emails)
+  // to avoid leaking which addresses have accounts.
+  const result = await passwordResetService.requestPasswordReset({
+    email,
+    frontendUrl: env.FRONTEND_URL,
+  });
+
+  return sendSuccess(res, {
+    message: "If an account exists for that email, a password reset link has been sent.",
+    data: { emailSent: result.emailSent },
+  });
+});
+
+// @desc    Complete a password reset using a single-use emailed token
+// @route   POST /api/auth/reset-password
+// @access  Public (token is the secret)
+const resetPassword = asyncHandler(async (req, res) => {
+  const { token, password } = req.body;
+
+  const result = await passwordResetService.resetPassword({
+    token,
+    newPassword: password,
+  });
+
+  return sendSuccess(res, {
+    message: "Your password has been reset. You can now sign in.",
+    data: { email: result.email },
+  });
+});
+
+module.exports = {
+  register,
+  login,
+  logout,
+  getMe,
+  refreshToken,
+  forgotPassword,
+  resetPassword,
+};

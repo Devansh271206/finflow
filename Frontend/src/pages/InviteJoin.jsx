@@ -158,9 +158,20 @@ export default function InviteJoin() {
               )}
 
               {!user && (
-                <Button variant="primary" size="sm" className="w-full justify-center" onClick={handleGoLogin}>
-                  <LogIn size={15} className="mr-1" /> Sign in to accept
-                </Button>
+                <div className="space-y-3">
+                  <Button variant="primary" size="sm" className="w-full justify-center" onClick={handleGoLogin}>
+                    <LogIn size={15} className="mr-1" /> Sign in to accept
+                  </Button>
+                  <p className="text-xs text-slate-500">
+                    Don't have an account yet?{' '}
+                    <Link
+                      to="/register"
+                      className="text-emerald-400 hover:text-emerald-300 font-semibold"
+                    >
+                      Create one with {invite.email}
+                    </Link>
+                  </p>
+                </div>
               )}
             </div>
           )}

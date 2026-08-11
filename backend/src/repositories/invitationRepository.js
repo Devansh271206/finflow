@@ -13,7 +13,7 @@ const { supabaseAdmin } = require("../config/supabase");
 // accept flow can render useful context without extra queries.
 const INVITE_DETAIL_SELECT = `
   id, workspace_id, email, role_id, department_id, invited_by,
-  token, status, sent_at, expires_at, accepted_at, created_at,
+  token_hash, status, sent_at, expires_at, accepted_at, created_at,
   workspaces:workspace_id (
     id, company_id, name, slug, status,
     companies:company_id ( id, name )
@@ -32,15 +32,16 @@ async function create(payload) {
 }
 
 /**
- * Look up an invitation by its secret token. Token is UNIQUE, so this
- * is safe against multiple rows. Used by the (public) join-link check
- * and by accept validation.
+ * Look up an invitation by the SHA-256 hash of its secret token.
+ * token_hash is UNIQUE, so this is safe against multiple rows. Used by
+ * the (public) join-link check and by accept validation. The raw token
+ * is never stored — callers must hash it (utils/tokens.js) first.
  */
-async function findByToken(token) {
+async function findByTokenHash(tokenHash) {
   const { data, error } = await supabaseAdmin
     .from("invitations")
     .select(INVITE_DETAIL_SELECT)
-    .eq("token", token)
+    .eq("token_hash", tokenHash)
     .maybeSingle();
   if (error) throw error;
   return data;
@@ -89,7 +90,7 @@ async function listByWorkspace(workspaceId) {
 
 module.exports = {
   create,
-  findByToken,
+  findByTokenHash,
   findPendingByWorkspaceAndEmail,
   update,
   listByWorkspace,

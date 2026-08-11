@@ -11,6 +11,8 @@ import DashboardLayout from './layouts/DashboardLayout';
 // Pages
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import OnboardingWizard from './pages/onboarding/OnboardingWizard';
 import InviteJoin from './pages/InviteJoin';
 import Dashboard from './pages/Dashboard';
@@ -106,6 +108,8 @@ const AnimatedRoutes = () => {
         {/* Auth routes */}
         <Route path="/login" element={<PageTransition><Login /></PageTransition>} />
         <Route path="/register" element={<PageTransition><Register /></PageTransition>} />
+        <Route path="/forgot-password" element={<PageTransition><ForgotPassword /></PageTransition>} />
+        <Route path="/reset-password" element={<PageTransition><ResetPassword /></PageTransition>} />
         <Route path="/onboarding" element={<PageTransition><OnboardingWizard /></PageTransition>} />
         {/* Workspace invitation accept page — public; handles auth internally */}
         <Route path="/invite" element={<PageTransition><InviteJoin /></PageTransition>} />

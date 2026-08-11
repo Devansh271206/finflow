@@ -111,7 +111,7 @@ export const Login = () => {
                 <input type="checkbox" className="rounded border-white/10 bg-white/5 text-emerald-500 focus:ring-emerald-500/50" />
                 Remember me
               </label>
-              <a href="#forgot" className="text-emerald-400 hover:text-emerald-300 font-semibold transition-colors">Forgot password?</a>
+              <Link to="/forgot-password" className="text-emerald-400 hover:text-emerald-300 font-semibold transition-colors">Forgot password?</Link>
             </div>
 
             <Button type="submit" loading={loading} className="w-full py-3.5 text-sm font-semibold justify-center">

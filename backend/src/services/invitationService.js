@@ -2,29 +2,30 @@
  * Invitation Service
  * ------------------------------------------------------------------
  * Workspace join-by-invitation (PRD Section 30). Orchestrates:
- *   createInvitation()  — validate, generate token, store row, deliver
- *                         the email via Supabase Auth's built-in email
- *                         infrastructure (admin.inviteUserByEmail — the
- *                         only email channel this backend has; no SMTP
- *                         credentials are required beyond the Supabase
- *                         Auth email settings already used for
- *                         verification emails).
+ *   createInvitation()  — validate, generate token, store a SHA-256 hash,
+ *                         deliver the invite email via emailService
+ *                         (Resend/SMTP — see services/emailService.js).
  *   getInvitationByToken() — public, read-only lookup for the join page.
  *   acceptInvitation()  — validate token + expiry + email match, create
  *                         the memberships row, flip status to accepted.
  *
- * Security model:
- *   - The token is a 32-byte CSPRNG hex string (64 chars) stored only in
- *     the invitations row and the email link. It is never logged.
+ * Security model (migration 022):
+ *   - The token is a 32-byte CSPRNG hex string (64 chars). Only its
+ *     SHA-256 hash (token_hash) is stored in the invitations table; the
+ *     raw token exists only in the emailed link and in the in-memory
+ *     service call that builds it. It is never logged and never persisted.
  *   - Accepting requires the caller to be authenticated AS the invited
  *     email — the token alone is not sufficient, so a leaked link can't
  *     grant a third party access.
  *   - Tokens expire 7 days after sending; overdue tokens are lazily
  *     flipped to 'expired' and rejected.
+ *   - A re-send rotates the token (the old raw token can't be recovered
+ *     from the hash), so each email carries a fresh single-use link.
  */
 
-const crypto = require("crypto");
 const ApiError = require("../utils/ApiError");
+const { generateToken, hashToken } = require("../utils/tokens");
+const emailService = require("./emailService");
 const invitationRepository = require("../repositories/invitationRepository");
 const membershipRepository = require("../repositories/membershipRepository");
 const roleRepository = require("../repositories/roleRepository");
@@ -32,10 +33,6 @@ const departmentRepository = require("../repositories/departmentRepository");
 const { supabaseAdmin } = require("../config/supabase");
 
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-
-function generateToken() {
-  return crypto.randomBytes(32).toString("hex");
-}
 
 /**
  * Validates role/department references for a new invitation. Role is
@@ -57,13 +54,26 @@ async function validateInviteTargets({ workspaceId, roleId, departmentId }) {
   return targetRole;
 }
 
+/** Resolve the inviter's display name for the email body (best effort). */
+async function getInviterName(userId) {
+  if (!userId) return null;
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("full_name")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error || !data?.full_name) return null;
+  return data.full_name;
+}
+
 /**
  * Create (or re-send) a workspace invitation.
  *
  * If the invitee is already an active member, this errors out. If a
  * valid pending invitation already exists for the same workspace+email,
- * the existing token is reused and the email re-sent (idempotent retry
- * of a failed first send) rather than stacking duplicates.
+ * the token is ROTATED (fresh hash + fresh expiry) and the email re-sent
+ * — the previous raw token is unrecoverable from its hash, so each email
+ * must carry a new single-use link.
  *
  * @returns {Promise<{invitation: object, emailSent: boolean}>}
  */
@@ -85,51 +95,53 @@ async function createInvitation({ workspaceId, email, roleId, departmentId, invi
     }
   }
 
-  // Reuse a still-valid pending invitation (resend path) or create fresh.
+  const rawToken = generateToken();
+  const tokenHash = hashToken(rawToken);
+  const expiresAt = new Date(Date.now() + INVITATION_TTL_MS).toISOString();
+
+  // Rotate the token on any still-pending invitation (resend path) or
+  // create a fresh row when none exists.
   const existingPending = await invitationRepository.findPendingByWorkspaceAndEmail(
     workspaceId,
     normalisedEmail
   );
 
-  let invitation = existingPending || null;
-  let emailSent = false;
-
-  if (!invitation) {
-    const token = generateToken();
+  let invitation;
+  if (existingPending) {
+    invitation = await invitationRepository.update(existingPending.id, {
+      token_hash: tokenHash,
+      invited_by: invitedBy,
+      status: "pending",
+      expires_at: expiresAt,
+    });
+  } else {
     invitation = await invitationRepository.create({
       workspace_id: workspaceId,
       email: normalisedEmail,
       role_id: roleId,
       department_id: departmentId || null,
       invited_by: invitedBy,
-      token,
+      token_hash: tokenHash,
       status: "pending",
-      expires_at: new Date(Date.now() + INVITATION_TTL_MS).toISOString(),
+      expires_at: expiresAt,
     });
   }
 
-  // Deliver via Supabase Auth's invite email. redirectTo carries our own
-  // token (and the email) so the frontend /invite page can accept it.
-  const inviteUrl = `${frontendUrl}/invite?token=${invitation.token}&email=${encodeURIComponent(normalisedEmail)}`;
+  // Deliver via our own email service. The link carries the RAW token
+  // (never the hash) so the /invite page can present it to the service.
+  const inviteUrl = `${frontendUrl}/invite?token=${rawToken}&email=${encodeURIComponent(normalisedEmail)}`;
 
-  const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-    normalisedEmail,
-    {
-      redirectTo: inviteUrl,
-      data: { full_name: null },
-    }
-  );
+  const inviterName = await getInviterName(invitedBy);
+  const workspace = invitation.workspaces || {};
+  const result = await emailService.sendEmployeeInvitation({
+    to: normalisedEmail,
+    inviteUrl,
+    organizationName: workspace.companies?.name || workspace.name || null,
+    workspaceName: workspace.name || null,
+    inviterName,
+  });
 
-  if (inviteError) {
-    throw new ApiError(
-      502,
-      `Invitation saved but the invitation email could not be sent (${inviteError.message}). ` +
-        "Check Supabase Auth email settings, then try sending again — a pending invitation will be re-sent."
-    );
-  }
-
-  emailSent = true;
-  return { invitation, emailSent };
+  return { invitation, emailSent: result.emailSent };
 }
 
 /**
@@ -138,7 +150,7 @@ async function createInvitation({ workspaceId, email, roleId, departmentId, invi
  * token or any membership internals.
  */
 async function getInvitationByToken(token) {
-  const invitation = await invitationRepository.findByToken(token);
+  const invitation = await invitationRepository.findByTokenHash(hashToken(token));
   if (!invitation) {
     throw new ApiError(404, "Invitation not found.");
   }
@@ -171,7 +183,7 @@ async function getInvitationByToken(token) {
  * Requires the caller to be authenticated as the invited email.
  */
 async function acceptInvitation(token, { userId, userEmail }) {
-  const invitation = await invitationRepository.findByToken(token);
+  const invitation = await invitationRepository.findByTokenHash(hashToken(token));
   if (!invitation) {
     throw new ApiError(404, "Invitation not found or already used.");
   }
@@ -199,9 +211,10 @@ async function acceptInvitation(token, { userId, userEmail }) {
     throw new ApiError(400, "You are already a member of this workspace.");
   }
 
-  // The invitee may have been auto-created by inviteUserByEmail and never
-  // went through /api/auth/register, so their profile row may be missing.
-  // Upsert a minimal one so member-list joins and profile lookups work.
+  // The invitee may have self-registered without ever going through the
+  // full /api/auth/register profile upsert, so their profile row may be
+  // missing. Upsert a minimal one so member-list joins and profile
+  // lookups work.
   await supabaseAdmin.from("profiles").upsert(
     {
       id: userId,
